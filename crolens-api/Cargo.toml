@@ -1,0 +1,32 @@
+[package]
+name = "crolens-api"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true
+
+[dependencies]
+worker = { version = "0.7.2", features = ["d1"] }
+worker-macros = "0.7.2"
+
+console_error_panic_hook = "0.1.7"
+serde = { version = "1.0.217", features = ["derive"] }
+serde_json = "1.0.138"
+thiserror = "2.0.11"
+uuid = { version = "1.11.0", features = ["v4", "js"] }
+
+alloy-primitives = { version = "0.7.7", default-features = false }
+alloy-sol-types = { version = "0.7.7", default-features = false }
+hex = "0.4.3"
+futures-util = "0.3.31"
+async-trait = "0.1.80"
+
+[dev-dependencies]
+tokio = { version = "1.49.0", features = ["macros", "rt", "sync"] }

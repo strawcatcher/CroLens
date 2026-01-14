@@ -1,0 +1,26 @@
+# Copy this file to `.dev.vars` for local development.
+# Do NOT commit `.dev.vars`.
+
+BLOCKPI_RPC_URL=https://cronos.blockpi.network/v1/rpc/YOUR_KEY
+RPC_MAX_RETRIES=3
+RPC_TIMEOUT_MS=10000
+RPC_CACHE_TTL_SECS=300
+
+# For browser-based local development.
+CORS_ALLOW_ORIGIN=*
+
+# Log sampling (1.0 = log all).
+REQUEST_LOG_SAMPLE_RATE=1.0
+
+# JSON-RPC rate limit (per IP).
+RATE_LIMIT_JSONRPC_PER_MIN=120
+RATE_LIMIT_JSONRPC_WINDOW_SECS=60
+
+# Optional (Tenderly simulation)
+TENDERLY_ACCESS_KEY=YOUR_KEY
+TENDERLY_ACCOUNT=your_account_slug
+TENDERLY_PROJECT=your_project_slug
+
+# Optional (x402 top-up)
+X402_PAYMENT_ADDRESS=0x0000000000000000000000000000000000000000
+X402_TOPUP_CREDITS=1000

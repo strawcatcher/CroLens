@@ -1,0 +1,87 @@
+:root {
+  color-scheme: dark;
+
+  --p5-black: #000000;
+  --p5-red: #ff0000;
+  --p5-red-dim: rgba(255, 0, 0, 0.15);
+  --p5-white: #ffffff;
+  --p5-gray: #b8b8b8;
+  --p5-gray-dim: #888888;
+  --p5-dark-1: #0a0a0a;
+  --p5-dark-2: #141414;
+  --p5-dark-3: #1e1e1e;
+
+  --p5-success: #00ff41;
+  --p5-warning: #ffd700;
+  --p5-error: #ff0000;
+
+  --bg-base: var(--p5-black);
+  --bg-base-rgb: 0 0 0;
+  --bg-card: var(--p5-dark-1);
+  --bg-card-rgb: 10 10 10;
+  --bg-elevated: var(--p5-dark-3);
+  --bg-elevated-rgb: 30 30 30;
+
+  --text-primary: var(--p5-white);
+  --text-primary-rgb: 255 255 255;
+  --text-secondary: var(--p5-gray);
+  --text-secondary-rgb: 184 184 184;
+  --text-muted: var(--p5-gray-dim);
+  --text-muted-rgb: 136 136 136;
+
+  --accent-red: var(--p5-red);
+  --accent-red-rgb: 255 0 0;
+  --accent-red-hover: #ff1a1a;
+  --accent-red-active: #cc0000;
+  --accent-red-glow: rgba(255, 0, 0, 0.35);
+
+  --success: var(--p5-success);
+  --success-rgb: 0 255 65;
+  --warning: var(--p5-warning);
+  --warning-rgb: 255 215 0;
+  --error: var(--p5-error);
+  --error-rgb: 255 0 0;
+  --info: #0a84ff;
+  --info-rgb: 10 132 255;
+
+  --border-default: #333333;
+  --border-default-rgb: 51 51 51;
+  --border-hover: #4a4a4a;
+  --border-hover-rgb: 74 74 74;
+  --border-focus: var(--accent-red);
+
+  --code-bg: var(--p5-dark-2);
+  --code-string: #ff6b6b;
+  --code-key: #ffffff;
+  --code-number: var(--p5-success);
+  --code-boolean: var(--p5-warning);
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 8px;
+  --radius-full: 9999px;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 12px 36px rgba(0, 0, 0, 0.65);
+  --shadow-glow: 0 0 20px var(--accent-red-glow);
+
+  --ease-default: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --duration-fast: 100ms;
+  --duration-normal: 200ms;
+  --duration-slow: 300ms;
+  --duration-slower: 500ms;
+}

@@ -1,0 +1,25 @@
+# Credentials (NEVER COMMIT)
+.credentials
+.env
+.env.*
+*.secret
+
+# Internal docs (not for public)
+docs/
+
+# Cloudflare
+.wrangler/
+.dev.vars
+
+# Rust
+target/
+Cargo.lock
+
+# Node
+node_modules/
+dist/
+
+# IDE
+.idea/
+.vscode/
+*.swp

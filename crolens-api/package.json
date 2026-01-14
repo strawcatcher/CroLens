@@ -1,0 +1,20 @@
+{
+  "name": "crolens-api",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "wrangler": "^4.58.0"
+  },
+  "scripts": {
+    "dev": "wrangler dev --local --persist-to .wrangler/state",
+    "deploy": "wrangler deploy",
+    "deploy:production": "wrangler deploy -c wrangler.production.toml",
+    "test:unit": "cargo test",
+    "test:integration": "./tests/integration/run_all.sh",
+    "test:all": "npm run test:unit && npm run test:integration",
+    "d1:schema:local": "wrangler d1 execute crolens-db --local --file=./db/schema.sql",
+    "d1:seed:local": "wrangler d1 execute crolens-db --local --file=./db/seed.sql",
+    "d1:schema:remote": "wrangler d1 execute crolens-db --remote --file=./db/schema.sql",
+    "d1:seed:remote": "wrangler d1 execute crolens-db --remote --file=./db/seed.sql"
+  }
+}
