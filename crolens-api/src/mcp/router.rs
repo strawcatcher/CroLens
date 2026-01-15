@@ -5,6 +5,7 @@ use crate::domain;
 use crate::error::CroLensError;
 use crate::gateway;
 use crate::infra;
+use crate::infra::structured_log::{LogEntry, LogLevel, RequestContext};
 use crate::mcp::protocol::{JsonRpcRequest, JsonRpcResponse, ToolCallParams};
 use crate::types;
 
@@ -68,14 +69,17 @@ async fn handle_tools_call(
 
     let tool_name = params.name.clone();
     let outcome: std::result::Result<Value, CroLensError> = async {
-        let payment_data = match infra::x402::X402Config::try_load(env, &db).await {
-            Ok(Some(cfg)) => Some(serde_json::json!({
-                "chain_id": 25,
-                "payment_address": cfg.payment_address.to_string(),
-                "price": format!("{} CRO", types::format_units(&cfg.topup_amount_wei(), 18)),
-                "credits": cfg.topup_credits,
-            })),
-            _ => None,
+        // 延迟加载 X402 配置，只在需要返回支付错误时才加载
+        let lazy_payment_data = || async {
+            match infra::x402::X402Config::try_load(env, &db).await {
+                Ok(Some(cfg)) => Some(serde_json::json!({
+                    "chain_id": 25,
+                    "payment_address": cfg.payment_address.to_string(),
+                    "price": format!("{} CRO", types::format_units(&cfg.topup_amount_wei(), 18)),
+                    "credits": cfg.topup_credits,
+                })),
+                _ => None,
+            }
         };
 
         let key = api_key.ok_or_else(|| {
@@ -94,11 +98,9 @@ async fn handle_tools_call(
         }
 
         if record.credits <= 0 {
-            return Err(CroLensError::payment_required(payment_data));
+            return Err(CroLensError::payment_required(lazy_payment_data().await));
         }
-        if record.tier == "free" && tool_name != "get_account_summary" {
-            return Err(CroLensError::payment_required(payment_data));
-        }
+        // Free 用户可以使用所有工具，后续再加限制
         gateway::deduct_credit(&db, &record.api_key).await?;
 
         let services = infra::Services::new(env, trace_id, start_ms)?;
@@ -134,6 +136,16 @@ async fn handle_tools_call(
             ("error", Some(code))
         }
     };
+
+    // Emit structured JSON log
+    let log_ctx = RequestContext::new(trace_id, api_key, client_ip, start_ms);
+    match &outcome {
+        Ok(_) => log_ctx.log_request_complete(&tool_name, status),
+        Err(err) => {
+            let (code, msg, _) = err.to_json_rpc_error();
+            log_ctx.log_request_error(&tool_name, code, &msg);
+        }
+    }
 
     let sample_rate = env
         .var("REQUEST_LOG_SAMPLE_RATE")

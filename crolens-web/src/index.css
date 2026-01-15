@@ -17,15 +17,22 @@
   body {
     @apply text-foreground font-sans antialiased;
     background: var(--bg-base);
-    background-attachment: fixed;
     overflow-x: hidden;
   }
 
-  /* Use pseudo-element for stripe pattern to enable GPU compositing */
+  /*
+   * 条纹背景优化：
+   * 1. 使用 contain: strict 隔离重绘区域
+   * 2. 移除 position: fixed，改用绝对定位 + 100vh/100vw
+   * 3. 这样滚动时浏览器不需要重新计算条纹位置
+   */
   body::before {
     content: "";
-    position: fixed;
-    inset: 0;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
     background:
       repeating-linear-gradient(
         -45deg,
@@ -36,8 +43,9 @@
       );
     pointer-events: none;
     z-index: -1;
-    /* 使用 translateZ(0) 而非 will-change 以减少内存占用 */
+    /* GPU 加速 + 隔离重绘 */
     transform: translateZ(0);
+    contain: strict;
   }
 
   code,

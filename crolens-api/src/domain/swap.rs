@@ -25,7 +25,7 @@ pub async fn construct_swap_tx(services: &infra::Services, args: Value) -> Resul
     let amount_in = types::parse_u256_dec(&input.amount_in)?;
     let rpc = services.rpc()?;
 
-    let tokens = infra::token::list_tokens(&services.db).await?;
+    let tokens = infra::token::list_tokens_cached(&services.db, &services.kv).await?;
     let wcro = infra::token::resolve_token(&tokens, "WCRO").ok();
     let wcro_address = wcro.as_ref().map(|t| t.address);
 
@@ -48,8 +48,12 @@ pub async fn construct_swap_tx(services: &infra::Services, args: Value) -> Resul
         Some(infra::token::resolve_token(&tokens, &input.token_in)?)
     };
 
-    let router = infra::config::get_protocol_contract(&services.db, "vvs", "router").await?;
-    let factory = infra::config::get_protocol_contract(&services.db, "vvs", "factory").await?;
+    // 并行获取 router 和 factory
+    let (router, factory) = futures_util::future::try_join(
+        infra::config::get_protocol_contract(&services.db, "vvs", "router"),
+        infra::config::get_protocol_contract(&services.db, "vvs", "factory"),
+    )
+    .await?;
 
     let path = build_path(
         factory,
@@ -66,9 +70,12 @@ pub async fn construct_swap_tx(services: &infra::Services, args: Value) -> Resul
     }
     let deadline = (types::now_seconds() + 1200) as u64;
 
-    let (estimated_out, minimum_out) =
-        quote_amounts(router, amount_in, &path, rpc, input.slippage_bps).await?;
-    let price_impact_bps = estimate_price_impact_bps(factory, &path, amount_in, rpc).await?;
+    // 并行获取报价和价格影响
+    let ((estimated_out, minimum_out), price_impact_bps) = futures_util::future::try_join(
+        quote_amounts(router, amount_in, &path, rpc, input.slippage_bps),
+        estimate_price_impact_bps(factory, &path, amount_in, rpc),
+    )
+    .await?;
     let price_impact = format_percent_from_basis_points(price_impact_bps);
 
     let mut steps: Vec<Value> = Vec::new();
@@ -125,7 +132,7 @@ pub async fn construct_swap_tx(services: &infra::Services, args: Value) -> Resul
         if let Some(tenderly) = services.tenderly() {
             let data_hex = types::bytes_to_hex0x(&swap_data);
             let sim = tenderly
-                .simulate(from, swap_to, &data_hex, swap_value)
+                .simulate(from, swap_to, &data_hex, swap_value, None)
                 .await?;
             if !sim.success {
                 return Err(CroLensError::SimulationFailed(

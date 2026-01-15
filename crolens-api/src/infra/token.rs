@@ -1,11 +1,16 @@
 use alloy_primitives::Address;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use worker::d1::D1Type;
+use worker::kv::KvStore;
 use worker::D1Database;
 
 use crate::error::{CroLensError, Result};
 use crate::infra;
 use crate::types;
+
+const TOKENS_CACHE_KEY: &str = "cache:tokens:all";
+const TOKENS_CACHE_TTL_SECS: u64 = 600; // 10 分钟
 
 #[derive(Debug, Clone)]
 pub struct Token {
@@ -13,6 +18,58 @@ pub struct Token {
     pub symbol: String,
     pub decimals: u8,
     pub is_stablecoin: bool,
+}
+
+#[derive(Serialize, Deserialize)]
+struct TokenCache {
+    address: String,
+    symbol: String,
+    decimals: u8,
+    is_stablecoin: bool,
+}
+
+/// 从 KV 缓存获取代币列表，缓存未命中时从 DB 加载
+pub async fn list_tokens_cached(db: &D1Database, kv: &KvStore) -> Result<Vec<Token>> {
+    // 先尝试从 KV 缓存获取
+    if let Ok(Some(cached)) = kv.get(TOKENS_CACHE_KEY).text().await {
+        if let Ok(tokens_cache) = serde_json::from_str::<Vec<TokenCache>>(&cached) {
+            let mut tokens = Vec::with_capacity(tokens_cache.len());
+            for t in tokens_cache {
+                if let Ok(addr) = types::parse_address(&t.address) {
+                    tokens.push(Token {
+                        address: addr,
+                        symbol: t.symbol,
+                        decimals: t.decimals,
+                        is_stablecoin: t.is_stablecoin,
+                    });
+                }
+            }
+            if !tokens.is_empty() {
+                return Ok(tokens);
+            }
+        }
+    }
+
+    // 缓存未命中，从 DB 加载
+    let tokens = list_tokens(db).await?;
+
+    // 写入缓存
+    let cache: Vec<TokenCache> = tokens
+        .iter()
+        .map(|t| TokenCache {
+            address: t.address.to_string(),
+            symbol: t.symbol.clone(),
+            decimals: t.decimals,
+            is_stablecoin: t.is_stablecoin,
+        })
+        .collect();
+    if let Ok(json) = serde_json::to_string(&cache) {
+        if let Ok(put) = kv.put(TOKENS_CACHE_KEY, json) {
+            let _ = put.expiration_ttl(TOKENS_CACHE_TTL_SECS).execute().await;
+        }
+    }
+
+    Ok(tokens)
 }
 
 pub async fn list_tokens(db: &D1Database) -> Result<Vec<Token>> {

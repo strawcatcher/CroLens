@@ -19,33 +19,38 @@ struct GetDefiPositionsArgs {
 }
 
 pub async fn get_defi_positions(services: &infra::Services, args: Value) -> Result<Value> {
-    let input: GetDefiPositionsArgs = serde_json::from_value(args)
+    let t0 = types::now_ms();
+    let input: GetDefiPositionsArgs = serde_json::from_value(args.clone())
         .map_err(|err| CroLensError::invalid_params(format!("Invalid input: {err}")))?;
     let user = types::parse_address(&input.address)?;
 
-    let pools = infra::config::list_dex_pools(&services.db, "vvs").await?;
-    let masterchef =
-        match infra::config::get_protocol_contract(&services.db, "vvs", "masterchef").await {
-            Ok(addr) => addr,
-            Err(_) => types::parse_address(VVS_MASTERCHEF_ADDRESS)?,
-        };
-    let mut calls = Vec::with_capacity(pools.len() * 5);
+    // 并行获取 pools, markets, masterchef, tokens (全部使用缓存版)
+    let (pools, markets, masterchef, tokens) = futures_util::future::try_join4(
+        infra::config::list_dex_pools_cached(&services.db, &services.kv, "vvs"),
+        infra::config::list_lending_markets_cached(&services.db, &services.kv, "tectonic"),
+        async {
+            match infra::config::get_protocol_contract(&services.db, "vvs", "masterchef").await {
+                Ok(addr) => Ok(addr),
+                Err(_) => types::parse_address(VVS_MASTERCHEF_ADDRESS),
+            }
+        },
+        infra::token::list_tokens_cached(&services.db, &services.kv),
+    )
+    .await?;
+    let t1 = types::now_ms();
+    worker::console_log!("[PERF] defi config load: {}ms", t1 - t0);
+
+    // ============ 第一阶段：快速过滤 - 只查询余额 ============
+    let mut balance_calls = Vec::with_capacity(pools.len() * 2 + markets.len());
+
+    // VVS: LP balance + staked balance
     for pool in &pools {
-        calls.push(infra::multicall::Call {
+        balance_calls.push(infra::multicall::Call {
             target: pool.lp_address,
             call_data: abi::balanceOfCall { account: user }.abi_encode().into(),
         });
-        calls.push(infra::multicall::Call {
-            target: pool.lp_address,
-            call_data: abi::getReservesCall {}.abi_encode().into(),
-        });
-        calls.push(infra::multicall::Call {
-            target: pool.lp_address,
-            call_data: abi::totalSupplyCall {}.abi_encode().into(),
-        });
-
         if let Some(pid) = pool.pool_index {
-            calls.push(infra::multicall::Call {
+            balance_calls.push(infra::multicall::Call {
                 target: masterchef,
                 call_data: abi::userInfoCall {
                     pid: U256::from(pid as u64),
@@ -54,7 +59,157 @@ pub async fn get_defi_positions(services: &infra::Services, args: Value) -> Resu
                 .abi_encode()
                 .into(),
             });
-            calls.push(infra::multicall::Call {
+        }
+    }
+
+    // Tectonic: getAccountSnapshot (包含 cToken balance 和 borrow balance)
+    for market in &markets {
+        balance_calls.push(infra::multicall::Call {
+            target: market.ctoken_address,
+            call_data: abi::getAccountSnapshotCall { account: user }
+                .abi_encode()
+                .into(),
+        });
+    }
+
+    let t2 = types::now_ms();
+    worker::console_log!("[PERF] phase1 build: {}ms, {} calls", t2 - t1, balance_calls.len());
+
+    // 并行执行第一阶段 multicall 和价格查询
+    let (balance_results, price_map) = futures_util::future::try_join(
+        services.multicall()?.aggregate(balance_calls),
+        infra::price::get_prices_usd_batch(services, &tokens),
+    )
+    .await?;
+
+    let t3 = types::now_ms();
+    worker::console_log!("[PERF] phase1 rpc+price: {}ms", t3 - t2);
+
+    // 解析第一阶段结果，找出有余额的池子和市场
+    let mut balance_idx = 0usize;
+    let mut active_pool_indices: Vec<usize> = Vec::new();
+    let mut pool_balances: Vec<(U256, U256)> = Vec::new(); // (wallet_lp, staked_lp)
+
+    for (pool_idx, pool) in pools.iter().enumerate() {
+        let wallet_lp = match balance_results.get(balance_idx) {
+            Some(Ok(data)) => {
+                abi::balanceOfCall::abi_decode_returns(data, true)
+                    .map(|r| r._0)
+                    .unwrap_or(U256::ZERO)
+            }
+            _ => U256::ZERO,
+        };
+        balance_idx += 1;
+
+        let staked_lp = if pool.pool_index.is_some() {
+            let result = match balance_results.get(balance_idx) {
+                Some(Ok(data)) if !data.is_empty() => {
+                    abi::userInfoCall::abi_decode_returns(data, true)
+                        .map(|r| r.amount)
+                        .unwrap_or(U256::ZERO)
+                }
+                _ => U256::ZERO,
+            };
+            balance_idx += 1;
+            result
+        } else {
+            U256::ZERO
+        };
+
+        let total_lp = wallet_lp.saturating_add(staked_lp);
+        if total_lp > U256::ZERO {
+            active_pool_indices.push(pool_idx);
+            pool_balances.push((wallet_lp, staked_lp));
+        }
+    }
+
+    // 解析 Tectonic 快照，找出有头寸的市场
+    // 快照包含: (err, cTokenBalance, borrowBalance, exchangeRateMantissa)
+    struct MarketSnapshot {
+        ctoken_balance: U256,
+        borrow_balance: U256,
+        exchange_rate: U256,
+    }
+
+    let mut active_market_indices: Vec<usize> = Vec::new();
+    let mut market_snapshots: Vec<MarketSnapshot> = Vec::new();
+
+    for (market_idx, _market) in markets.iter().enumerate() {
+        let snapshot = match balance_results.get(balance_idx) {
+            Some(Ok(data)) => {
+                abi::getAccountSnapshotCall::abi_decode_returns(data, true).ok()
+            }
+            _ => None,
+        };
+        balance_idx += 1;
+
+        if let Some(snap) = snapshot {
+            if snap.err == U256::ZERO && (snap.cTokenBalance > U256::ZERO || snap.borrowBalance > U256::ZERO) {
+                active_market_indices.push(market_idx);
+                market_snapshots.push(MarketSnapshot {
+                    ctoken_balance: snap.cTokenBalance,
+                    borrow_balance: snap.borrowBalance,
+                    exchange_rate: snap.exchangeRateMantissa,
+                });
+            }
+        }
+    }
+
+    let t4 = types::now_ms();
+    worker::console_log!(
+        "[PERF] phase1 parse: {}ms, active pools: {}, active markets: {}",
+        t4 - t3,
+        active_pool_indices.len(),
+        active_market_indices.len()
+    );
+
+    // 如果没有任何头寸，直接返回空结果并缓存
+    if active_pool_indices.is_empty() && active_market_indices.is_empty() {
+        worker::console_log!("[PERF] no positions, early return");
+        let empty_result = if input.simple_mode {
+            serde_json::json!({
+                "text": "VVS: 0 position(s), Pending 0 VVS ($0.00) | Tectonic: Supply $0.00, Borrow $0.00, Health ∞",
+                "meta": services.meta()
+            })
+        } else {
+            serde_json::json!({
+                "address": input.address,
+                "vvs": {
+                    "total_liquidity_usd": "0.00",
+                    "total_pending_rewards_usd": "0.00",
+                    "positions": [],
+                },
+                "tectonic": {
+                    "total_supply_usd": "0.00",
+                    "total_borrow_usd": "0.00",
+                    "net_value_usd": "0.00",
+                    "supplies": [],
+                    "borrows": [],
+                    "health_factor": "∞",
+                },
+                "meta": services.meta(),
+            })
+        };
+
+        return Ok(empty_result);
+    }
+
+    // ============ 第二阶段：只查询有余额的池子/市场的详细数据 ============
+    let mut detail_calls = Vec::with_capacity(active_pool_indices.len() * 3 + active_market_indices.len() * 2);
+
+    // VVS: 只查询活跃池子的 reserves, totalSupply, pendingVVS
+    for &pool_idx in &active_pool_indices {
+        let pool = &pools[pool_idx];
+        detail_calls.push(infra::multicall::Call {
+            target: pool.lp_address,
+            call_data: abi::getReservesCall {}.abi_encode().into(),
+        });
+        detail_calls.push(infra::multicall::Call {
+            target: pool.lp_address,
+            call_data: abi::totalSupplyCall {}.abi_encode().into(),
+        });
+        if let Some(pid) = pool.pool_index {
+            detail_calls.push(infra::multicall::Call {
                 target: masterchef,
                 call_data: abi::pendingVVSCall {
                     pid: U256::from(pid as u64),
@@ -66,53 +221,67 @@ pub async fn get_defi_positions(services: &infra::Services, args: Value) -> Resu
         }
     }
 
-    let results = services.multicall()?.aggregate(calls).await?;
-    let mut results_iter = results.into_iter();
+    // Tectonic: 只查询活跃市场的利率
+    for &market_idx in &active_market_indices {
+        let market = &markets[market_idx];
+        detail_calls.push(infra::multicall::Call {
+            target: market.ctoken_address,
+            call_data: abi::supplyRatePerBlockCall {}.abi_encode().into(),
+        });
+        detail_calls.push(infra::multicall::Call {
+            target: market.ctoken_address,
+            call_data: abi::borrowRatePerBlockCall {}.abi_encode().into(),
+        });
+    }
+
+    let t5 = types::now_ms();
+    worker::console_log!("[PERF] phase2 build: {}ms, {} calls", t5 - t4, detail_calls.len());
+
+    let results = if detail_calls.is_empty() {
+        Vec::new()
+    } else {
+        services.multicall()?.aggregate(detail_calls).await?
+    };
+
+    let t6 = types::now_ms();
+    worker::console_log!("[PERF] phase2 rpc: {}ms", t6 - t5);
+
+    // ============ 处理第二阶段结果 ============
     let mut vvs_positions: Vec<Value> = Vec::new();
     let mut vvs_total_liquidity_usd = 0.0_f64;
     let mut vvs_total_pending_rewards_usd = 0.0_f64;
     let mut vvs_total_pending_vvs: U256 = U256::ZERO;
 
-    let tokens = infra::token::list_tokens(&services.db).await?;
     let token_map = tokens;
-    let vvs_token = token_map
+    let vvs_price_usd = token_map
         .iter()
-        .find(|t| t.symbol.eq_ignore_ascii_case("VVS"));
-    let vvs_price_usd = match vvs_token {
-        Some(t) => infra::price::get_price_usd(services, t).await?,
-        None => None,
-    };
+        .find(|t| t.symbol.eq_ignore_ascii_case("VVS"))
+        .and_then(|t| price_map.get(&t.address).copied());
 
-    for pool in pools {
-        let balance_bytes = results_iter
-            .next()
-            .ok_or_else(|| CroLensError::RpcError("Missing multicall result".to_string()))?;
-        let reserves_bytes = results_iter
-            .next()
-            .ok_or_else(|| CroLensError::RpcError("Missing multicall result".to_string()))?;
-        let supply_bytes = results_iter
-            .next()
-            .ok_or_else(|| CroLensError::RpcError("Missing multicall result".to_string()))?;
-        let staked_bytes =
-            if pool.pool_index.is_some() {
-                Some(results_iter.next().ok_or_else(|| {
-                    CroLensError::RpcError("Missing multicall result".to_string())
-                })?)
-            } else {
-                None
-            };
-        let pending_bytes =
-            if pool.pool_index.is_some() {
-                Some(results_iter.next().ok_or_else(|| {
-                    CroLensError::RpcError("Missing multicall result".to_string())
-                })?)
-            } else {
-                None
-            };
+    let mut result_idx = 0usize;
 
-        let Ok(balance_data) = balance_bytes else {
-            continue;
+    // 处理活跃的 VVS 池子
+    for (i, &pool_idx) in active_pool_indices.iter().enumerate() {
+        let pool = &pools[pool_idx];
+        let (wallet_lp, staked_lp) = pool_balances[i];
+        let user_lp = wallet_lp.saturating_add(staked_lp);
+
+        let reserves_bytes = results.get(result_idx)
+            .ok_or_else(|| CroLensError::RpcError("Missing multicall result".to_string()))?;
+        result_idx += 1;
+        let supply_bytes = results.get(result_idx)
+            .ok_or_else(|| CroLensError::RpcError("Missing multicall result".to_string()))?;
+        result_idx += 1;
+
+        let pending_bytes = if pool.pool_index.is_some() {
+            let b = results.get(result_idx)
+                .ok_or_else(|| CroLensError::RpcError("Missing multicall result".to_string()))?;
+            result_idx += 1;
+            Some(b)
+        } else {
+            None
         };
+
         let Ok(reserves_data) = reserves_bytes else {
             continue;
         };
@@ -120,28 +289,9 @@ pub async fn get_defi_positions(services: &infra::Services, args: Value) -> Resu
             continue;
         };
 
-        let balance_ret = abi::balanceOfCall::abi_decode_returns(&balance_data, true)
-            .map_err(|err| CroLensError::RpcError(format!("balanceOf decode failed: {err}")))?;
-        let wallet_lp: U256 = balance_ret._0;
-
-        let staked_lp: U256 = match staked_bytes {
-            Some(Ok(data)) => {
-                let decoded =
-                    abi::userInfoCall::abi_decode_returns(&data, true).map_err(|err| {
-                        CroLensError::RpcError(format!("userInfo decode failed: {err}"))
-                    })?;
-                decoded.amount
-            }
-            _ => U256::ZERO,
-        };
-        let user_lp = wallet_lp.saturating_add(staked_lp);
-        if user_lp == U256::ZERO {
-            continue;
-        }
-
-        let reserves_ret = abi::getReservesCall::abi_decode_returns(&reserves_data, true)
+        let reserves_ret = abi::getReservesCall::abi_decode_returns(reserves_data, true)
             .map_err(|err| CroLensError::RpcError(format!("getReserves decode failed: {err}")))?;
-        let total_supply_ret = abi::totalSupplyCall::abi_decode_returns(&supply_data, true)
+        let total_supply_ret = abi::totalSupplyCall::abi_decode_returns(supply_data, true)
             .map_err(|err| CroLensError::RpcError(format!("totalSupply decode failed: {err}")))?;
 
         let total_supply: U256 = total_supply_ret._0;
@@ -155,12 +305,11 @@ pub async fn get_defi_positions(services: &infra::Services, args: Value) -> Resu
         let token1_amount = reserve1.saturating_mul(user_lp) / total_supply;
 
         let pending_vvs = match pending_bytes {
-            Some(Ok(data)) => {
-                let decoded =
-                    abi::pendingVVSCall::abi_decode_returns(&data, true).map_err(|err| {
-                        CroLensError::RpcError(format!("pendingVVS decode failed: {err}"))
-                    })?;
-                decoded._0
+            Some(Ok(data)) if !data.is_empty() => {
+                match abi::pendingVVSCall::abi_decode_returns(data, true) {
+                    Ok(decoded) => decoded._0,
+                    Err(_) => U256::ZERO,
+                }
             }
             _ => U256::ZERO,
         };
@@ -181,14 +330,12 @@ pub async fn get_defi_positions(services: &infra::Services, args: Value) -> Resu
         let token0_formatted = types::format_units(&token0_amount, token0_decimals);
         let token1_formatted = types::format_units(&token1_amount, token1_decimals);
 
-        let token0_price = match token0.as_ref() {
-            Some(t) => infra::price::get_price_usd(services, t).await?,
-            None => None,
-        };
-        let token1_price = match token1.as_ref() {
-            Some(t) => infra::price::get_price_usd(services, t).await?,
-            None => None,
-        };
+        let token0_price = token0
+            .as_ref()
+            .and_then(|t| price_map.get(&t.address).copied());
+        let token1_price = token1
+            .as_ref()
+            .and_then(|t| price_map.get(&t.address).copied());
 
         let value_usd = match (
             token0_price,
@@ -239,8 +386,7 @@ pub async fn get_defi_positions(services: &infra::Services, args: Value) -> Resu
         }));
     }
 
-    let markets = infra::config::list_lending_markets(&services.db, "tectonic").await?;
-
+    // 处理活跃的 Tectonic 市场
     let mut supplies: Vec<Value> = Vec::new();
     let mut borrows: Vec<Value> = Vec::new();
     let mut total_supply_usd = 0.0_f64;
@@ -248,66 +394,30 @@ pub async fn get_defi_positions(services: &infra::Services, args: Value) -> Resu
     let mut first_supply_detail: Option<String> = None;
     let mut first_borrow_detail: Option<String> = None;
 
-    let mut market_calls = Vec::with_capacity(markets.len() * 3);
-    for market in &markets {
-        market_calls.push(infra::multicall::Call {
-            target: market.ctoken_address,
-            call_data: abi::getAccountSnapshotCall { account: user }
-                .abi_encode()
-                .into(),
-        });
-        market_calls.push(infra::multicall::Call {
-            target: market.ctoken_address,
-            call_data: abi::supplyRatePerBlockCall {}.abi_encode().into(),
-        });
-        market_calls.push(infra::multicall::Call {
-            target: market.ctoken_address,
-            call_data: abi::borrowRatePerBlockCall {}.abi_encode().into(),
-        });
-    }
-    let market_results = services.multicall()?.aggregate(market_calls).await?;
-    let mut market_iter = market_results.into_iter();
+    for (i, &market_idx) in active_market_indices.iter().enumerate() {
+        let market = &markets[market_idx];
+        let decoded = &market_snapshots[i];
 
-    for market in markets.into_iter() {
-        let snapshot = market_iter
-            .next()
+        let supply_rate = results.get(result_idx)
             .ok_or_else(|| CroLensError::RpcError("Missing multicall result".to_string()))?;
-        let supply_rate = market_iter
-            .next()
+        result_idx += 1;
+        let borrow_rate = results.get(result_idx)
             .ok_or_else(|| CroLensError::RpcError("Missing multicall result".to_string()))?;
-        let borrow_rate = market_iter
-            .next()
-            .ok_or_else(|| CroLensError::RpcError("Missing multicall result".to_string()))?;
-
-        let Ok(data) = snapshot else {
-            continue;
-        };
-
-        let decoded =
-            abi::getAccountSnapshotCall::abi_decode_returns(&data, true).map_err(|err| {
-                CroLensError::RpcError(format!("getAccountSnapshot decode failed: {err}"))
-            })?;
-        if decoded.err != U256::ZERO {
-            continue;
-        }
+        result_idx += 1;
 
         let supply_rate_per_block = match supply_rate {
             Ok(data) => {
-                let decoded = abi::supplyRatePerBlockCall::abi_decode_returns(&data, true)
-                    .map_err(|err| {
-                        CroLensError::RpcError(format!("supplyRatePerBlock decode failed: {err}"))
-                    })?;
-                decoded._0
+                abi::supplyRatePerBlockCall::abi_decode_returns(data, true)
+                    .map(|d| d._0)
+                    .unwrap_or(U256::ZERO)
             }
             Err(_) => U256::ZERO,
         };
         let borrow_rate_per_block = match borrow_rate {
             Ok(data) => {
-                let decoded = abi::borrowRatePerBlockCall::abi_decode_returns(&data, true)
-                    .map_err(|err| {
-                        CroLensError::RpcError(format!("borrowRatePerBlock decode failed: {err}"))
-                    })?;
-                decoded._0
+                abi::borrowRatePerBlockCall::abi_decode_returns(data, true)
+                    .map(|d| d._0)
+                    .unwrap_or(U256::ZERO)
             }
             Err(_) => U256::ZERO,
         };
@@ -320,14 +430,13 @@ pub async fn get_defi_positions(services: &infra::Services, args: Value) -> Resu
             .find(|t| t.address == market.underlying_address)
             .cloned();
         let decimals = token.as_ref().map(|t| t.decimals).unwrap_or(18);
-        let price = match token.as_ref() {
-            Some(t) => infra::price::get_price_usd(services, t).await?,
-            None => None,
-        };
+        let price = token
+            .as_ref()
+            .and_then(|t| price_map.get(&t.address).copied());
 
         let supply_underlying = decoded
-            .cTokenBalance
-            .saturating_mul(decoded.exchangeRateMantissa)
+            .ctoken_balance
+            .saturating_mul(decoded.exchange_rate)
             / U256::from(1_000_000_000_000_000_000u128);
         let supply_formatted = types::format_units(&supply_underlying, decimals);
         let supply_value_usd = match (price, supply_formatted.parse::<f64>().ok()) {
@@ -338,7 +447,7 @@ pub async fn get_defi_positions(services: &infra::Services, args: Value) -> Resu
             total_supply_usd += v;
         }
 
-        let borrow_underlying = decoded.borrowBalance;
+        let borrow_underlying = decoded.borrow_balance;
         let borrow_formatted = types::format_units(&borrow_underlying, decimals);
         let borrow_value_usd = match (price, borrow_formatted.parse::<f64>().ok()) {
             (Some(p), Some(a)) => Some(p * a),
@@ -388,7 +497,7 @@ pub async fn get_defi_positions(services: &infra::Services, args: Value) -> Resu
 
     let health_factor = health_factor_string(total_supply_usd, total_borrow_usd);
 
-    if input.simple_mode {
+    let result = if input.simple_mode {
         let pending_vvs_total_formatted = types::format_units(&vvs_total_pending_vvs, 18);
         let mut tectonic_details = Vec::new();
         if let Some(v) = first_supply_detail {
@@ -412,28 +521,29 @@ pub async fn get_defi_positions(services: &infra::Services, args: Value) -> Resu
             health_factor,
             tectonic_suffix
         );
-        return Ok(serde_json::json!({ "text": summary, "meta": services.meta() }));
-    }
+        serde_json::json!({ "text": summary, "meta": services.meta() })
+    } else {
+        let net_value_usd = total_supply_usd - total_borrow_usd;
+        serde_json::json!({
+            "address": input.address,
+            "vvs": {
+                "total_liquidity_usd": format!("{vvs_total_liquidity_usd:.2}"),
+                "total_pending_rewards_usd": format!("{vvs_total_pending_rewards_usd:.2}"),
+                "positions": vvs_positions,
+            },
+            "tectonic": {
+                "total_supply_usd": format!("{total_supply_usd:.2}"),
+                "total_borrow_usd": format!("{total_borrow_usd:.2}"),
+                "net_value_usd": format!("{net_value_usd:.2}"),
+                "supplies": supplies,
+                "borrows": borrows,
+                "health_factor": health_factor,
+            },
+            "meta": services.meta(),
+        })
+    };
 
-    let net_value_usd = total_supply_usd - total_borrow_usd;
-
-    Ok(serde_json::json!({
-        "address": input.address,
-        "vvs": {
-            "total_liquidity_usd": format!("{vvs_total_liquidity_usd:.2}"),
-            "total_pending_rewards_usd": format!("{vvs_total_pending_rewards_usd:.2}"),
-            "positions": vvs_positions,
-        },
-        "tectonic": {
-            "total_supply_usd": format!("{total_supply_usd:.2}"),
-            "total_borrow_usd": format!("{total_borrow_usd:.2}"),
-            "net_value_usd": format!("{net_value_usd:.2}"),
-            "supplies": supplies,
-            "borrows": borrows,
-            "health_factor": health_factor,
-        },
-        "meta": services.meta(),
-    }))
+    Ok(result)
 }
 
 fn apy_percent_string(rate_per_block: U256) -> Option<String> {

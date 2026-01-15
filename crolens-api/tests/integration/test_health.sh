@@ -54,4 +54,10 @@ echo "[health] Restore normal config"
 "${INTEGRATION_DIR}/setup.sh"
 load_pids
 
+echo "[ready] GET /ready (expected ready)"
+http_get "${BASE_URL}/ready"
+assert_eq "200" "${HTTP_STATUS}" "ready should return 200"
+assert_eq "ready" "$(json_get '.status')" "ready.status should be ready"
+assert_ne "null" "$(json_get '.version')" "ready should include version"
+
 echo "[health] OK"

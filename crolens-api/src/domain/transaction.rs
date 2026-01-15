@@ -23,8 +23,12 @@ pub async fn decode_transaction(services: &infra::Services, args: Value) -> Resu
     types::validate_hex_string(hash, 64)?;
 
     let rpc = services.rpc()?;
-    let tx = rpc.eth_get_transaction_by_hash(hash).await?;
-    let receipt = rpc.eth_get_transaction_receipt(hash).await?;
+    // 并行获取 transaction 和 receipt
+    let (tx, receipt) = futures_util::future::try_join(
+        rpc.eth_get_transaction_by_hash(hash),
+        rpc.eth_get_transaction_receipt(hash),
+    )
+    .await?;
 
     let from = tx.get("from").and_then(|v| v.as_str()).unwrap_or_default();
     let to = tx.get("to").and_then(|v| v.as_str()).unwrap_or_default();

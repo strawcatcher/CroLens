@@ -20,7 +20,7 @@ pub async fn get_account_summary(services: &infra::Services, args: Value) -> Res
         .map_err(|err| CroLensError::invalid_params(format!("Invalid input: {err}")))?;
     let address = types::parse_address(&input.address)?;
 
-    let tokens = infra::token::list_tokens(&services.db).await?;
+    let tokens = infra::token::list_tokens_cached(&services.db, &services.kv).await?;
     let mut calls = Vec::with_capacity(tokens.len());
     for token in &tokens {
         let call_data = abi::balanceOfCall { account: address }.abi_encode();
@@ -31,6 +31,10 @@ pub async fn get_account_summary(services: &infra::Services, args: Value) -> Res
     }
 
     let results = services.multicall()?.aggregate(calls).await?;
+
+    // 批量获取所有代币价格（并行查询 KV）
+    let price_map = infra::price::get_prices_usd_batch(services, &tokens).await?;
+
     let mut wallet = Vec::new();
     let mut wallet_value_usd = 0.0_f64;
 
@@ -46,7 +50,7 @@ pub async fn get_account_summary(services: &infra::Services, args: Value) -> Res
         }
 
         let balance_formatted = types::format_units(&balance, token.decimals);
-        let price_usd = infra::price::get_price_usd(services, &token).await?;
+        let price_usd = price_map.get(&token.address).copied();
         let value_usd = match (price_usd, balance_formatted.parse::<f64>().ok()) {
             (Some(p), Some(amount)) => {
                 let v = p * amount;

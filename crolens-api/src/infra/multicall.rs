@@ -23,7 +23,7 @@ impl MulticallClient {
         Self {
             rpc,
             multicall_address,
-            max_calls_per_batch: 30,
+            max_calls_per_batch: 100, // 增加批量大小以减少 RPC 调用
         }
     }
 

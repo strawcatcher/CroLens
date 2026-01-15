@@ -56,7 +56,7 @@ function StatusBadge({ status }: { status: string }) {
       aria-label={`Backend status: ${label}`}
     >
       <span
-        className={`w-2 h-2 rounded-full ${dotColor} ${isOk ? 'animate-pulse' : ''}`}
+        className={`w-2 h-2 rounded-full ${dotColor}`}
         aria-hidden="true"
       />
       <span className={textColor}>{label}</span>

@@ -10,4 +10,19 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          "vendor-react": ["react", "react-dom", "react-router-dom"],
+          "vendor-ui": ["framer-motion", "lucide-react", "sonner", "clsx"],
+          "vendor-query": ["@tanstack/react-query"],
+          "vendor-web3": ["viem", "wagmi"],
+          "vendor-rainbowkit": ["@rainbow-me/rainbowkit"],
+          "vendor-chart": ["recharts"],
+          "vendor-syntax": ["react-syntax-highlighter"],
+        },
+      },
+    },
+  },
 });

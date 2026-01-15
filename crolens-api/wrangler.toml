@@ -13,20 +13,14 @@ RPC_MAX_RETRIES = "3"
 RATE_LIMIT_JSONRPC_PER_MIN = "120"
 RATE_LIMIT_JSONRPC_WINDOW_SECS = "60"
 
-# Declare sensitive vars so they can be overridden in `.dev.vars` during local development.
-# For production, set these via `wrangler secret put` or the Cloudflare dashboard instead.
-BLOCKPI_RPC_URL = ""
-TENDERLY_API_KEY = ""
-TENDERLY_ACCESS_KEY = ""
-TENDERLY_ACCOUNT = ""
-TENDERLY_PROJECT = ""
-
-# x402 payment config (public values).
-X402_PAYMENT_ADDRESS = ""
+# Sensitive vars are set via `wrangler secret put` or Cloudflare dashboard.
+# Do NOT declare them here to avoid conflicts with secrets.
+# Required secrets: BLOCKPI_RPC_URL
+# Optional secrets: TENDERLY_API_KEY, TENDERLY_ACCESS_KEY, TENDERLY_ACCOUNT, TENDERLY_PROJECT, X402_PAYMENT_ADDRESS
 X402_TOPUP_CREDITS = "1000"
 
-# Optional: restrict CORS in production (e.g. https://crolens.example.com).
-CORS_ALLOW_ORIGIN = ""
+# Allow CORS from frontend (multiple origins supported with comma)
+CORS_ALLOW_ORIGIN = "https://crolens-web.pages.dev,https://strawcatcher.com"
 
 [triggers]
 crons = ["*/5 * * * *"]

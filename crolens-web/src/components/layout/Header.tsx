@@ -103,7 +103,7 @@ export function Header() {
 
   return (
     <>
-      <header className="fixed top-0 left-0 right-0 z-50 bg-[#0A0A0A]/95 backdrop-blur-md border-b border-[#333]">
+      <header className="fixed top-0 left-0 right-0 z-50 bg-[#0A0A0A] border-b border-[#333]">
         <div className="max-w-[1600px] mx-auto px-4 h-16 flex items-center justify-between">
           {/* Logo */}
           <NavLink to="/playground" className="flex items-center gap-3" aria-label="Go to Playground">

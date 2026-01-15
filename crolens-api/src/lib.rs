@@ -42,6 +42,7 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> worker::Result<Respo
     let mut resp = match (req.method(), req.path().as_str()) {
         (Method::Options, _) => Response::ok("")?.with_status(204),
         (Method::Get, "/health") => handle_health(&env).await?,
+        (Method::Get, "/ready") => handle_ready(&env).await?,
         (Method::Get, "/stats") => http::handle_stats(&env, &trace_id, start_ms).await?,
         (Method::Get, "/x402/quote") => {
             http::handle_x402_quote(&req, &env, &trace_id, start_ms).await?
@@ -53,6 +54,8 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> worker::Result<Respo
             http::handle_x402_verify(req, &env, &trace_id, start_ms).await?
         }
         (Method::Post, "/") => handle_json_rpc(req, &env, &trace_id).await?,
+        (Method::Post, "/_internal/price-sync") => handle_price_sync(&env).await?,
+        (Method::Get, "/_internal/test-coingecko") => handle_test_coingecko().await?,
         _ => Response::error("Not Found", 404)?,
     };
 
@@ -67,45 +70,74 @@ pub async fn scheduled(_event: ScheduledEvent, env: Env, _ctx: worker::ScheduleC
     run_price_sync(&env).await;
 }
 
+async fn handle_price_sync(env: &Env) -> worker::Result<Response> {
+    let mut messages = Vec::new();
+
+    messages.push("Starting anchor price sync...".to_string());
+    match infra::price::update_anchor_prices(env).await {
+        Ok(_) => {
+            messages.push("Anchor price sync succeeded".to_string());
+        }
+        Err(err) => {
+            messages.push(format!("Anchor price sync failed: {err}"));
+        }
+    }
+
+    // 检查 anchor 价格是否已写入
+    if let Ok(kv) = env.kv("KV") {
+        if let Ok(Some(v)) = kv.get("price:anchor:cro").text().await {
+            messages.push(format!("CRO price in KV: {v}"));
+        } else {
+            messages.push("CRO price NOT in KV".to_string());
+        }
+    }
+
+    messages.push("Starting derived price sync...".to_string());
+    match infra::price::update_derived_prices(env).await {
+        Ok(_) => {
+            messages.push("Derived price sync succeeded".to_string());
+        }
+        Err(err) => {
+            messages.push(format!("Derived price sync failed: {err}"));
+        }
+    }
+
+    // 检查聚合缓存
+    if let Ok(kv) = env.kv("KV") {
+        if let Ok(Some(v)) = kv.get("cache:prices:all").text().await {
+            messages.push(format!("Price cache: {} bytes", v.len()));
+        }
+    }
+
+    Response::ok(messages.join("\n"))
+}
+
+async fn handle_test_coingecko() -> worker::Result<Response> {
+    let url = "https://api.coingecko.com/api/v3/simple/price?ids=crypto-com-chain&vs_currencies=usd";
+
+    let mut headers = worker::Headers::new();
+    headers.set("User-Agent", "CroLens/1.0 (https://crolens.io)")?;
+    headers.set("Accept", "application/json")?;
+
+    let req = worker::Request::new_with_init(
+        url,
+        worker::RequestInit::new()
+            .with_method(worker::Method::Get)
+            .with_headers(headers),
+    )?;
+
+    let mut resp = worker::Fetch::Request(req).send().await?;
+    let text = resp.text().await?;
+
+    Response::ok(format!("Status: {}, Body: {}", resp.status_code(), text))
+}
+
 async fn handle_json_rpc(mut req: Request, env: &Env, trace_id: &str) -> worker::Result<Response> {
     let start_ms = types::now_ms();
     let api_key = types::get_header(&req, "x-api-key");
     let client_ip = types::get_client_ip(&req);
 
-    if let Ok(kv) = env.kv("KV") {
-        let limit = env
-            .var("RATE_LIMIT_JSONRPC_PER_MIN")
-            .ok()
-            .and_then(|v| v.to_string().parse::<u32>().ok())
-            .filter(|v| *v > 0)
-            .unwrap_or(JSONRPC_IP_RATE_LIMIT_DEFAULT);
-        let window_secs = env
-            .var("RATE_LIMIT_JSONRPC_WINDOW_SECS")
-            .ok()
-            .and_then(|v| v.to_string().parse::<u64>().ok())
-            .filter(|v| *v > 0)
-            .unwrap_or(JSONRPC_IP_RATE_WINDOW_SECS_DEFAULT);
-
-        let key = format!("rl:jsonrpc:{client_ip}");
-        match gateway::ratelimit::check_rate_limit(&kv, &key, limit, window_secs).await {
-            Ok(true) => {}
-            Ok(false) => {
-                let resp = JsonRpcResponse::error(
-                    serde_json::Value::Null,
-                    CroLensError::rate_limit_exceeded(Some(window_secs as u32)),
-                );
-                let mut http_resp = Response::from_json(&resp)?.with_status(429);
-                http_resp
-                    .headers_mut()
-                    .set("Retry-After", &window_secs.to_string())?;
-                return Ok(http_resp);
-            }
-            Err(err) => {
-                console_warn!("[WARN] JSON-RPC rate limit skipped: {}", err);
-            }
-        }
-    }
-
+    // 先解析请求体，这样可以判断是否需要 rate limit
     let body_bytes = match req.bytes().await {
         Ok(bytes) => bytes,
         Err(err) => {
@@ -141,6 +173,46 @@ async fn handle_json_rpc(mut req: Request, env: &Env, trace_id: &str) -> worker:
         json_rpc_req.method,
         req.path()
     );
+
+    // 对于只读的元数据请求，跳过 IP rate limit 以减少 KV 延迟
+    // tools/call 内部有自己的 API key rate limit
+    let needs_ip_rate_limit = json_rpc_req.method == "tools/call";
+
+    if needs_ip_rate_limit {
+        if let Ok(kv) = env.kv("KV") {
+            let limit = env
+                .var("RATE_LIMIT_JSONRPC_PER_MIN")
+                .ok()
+                .and_then(|v| v.to_string().parse::<u32>().ok())
+                .filter(|v| *v > 0)
+                .unwrap_or(JSONRPC_IP_RATE_LIMIT_DEFAULT);
+            let window_secs = env
+                .var("RATE_LIMIT_JSONRPC_WINDOW_SECS")
+                .ok()
+                .and_then(|v| v.to_string().parse::<u64>().ok())
+                .filter(|v| *v > 0)
+                .unwrap_or(JSONRPC_IP_RATE_WINDOW_SECS_DEFAULT);
+
+            let key = format!("rl:jsonrpc:{client_ip}");
+            match gateway::ratelimit::check_rate_limit(&kv, &key, limit, window_secs).await {
+                Ok(true) => {}
+                Ok(false) => {
+                    let resp = JsonRpcResponse::error(
+                        json_rpc_req.id,
+                        CroLensError::rate_limit_exceeded(Some(window_secs as u32)),
+                    );
+                    let mut http_resp = Response::from_json(&resp)?.with_status(429);
+                    http_resp
+                        .headers_mut()
+                        .set("Retry-After", &window_secs.to_string())?;
+                    return Ok(http_resp);
+                }
+                Err(err) => {
+                    console_warn!("[WARN] JSON-RPC rate limit skipped: {}", err);
+                }
+            }
+        }
+    }
 
     let request_size = body_bytes.len();
     let resp = mcp::router::handle(
@@ -240,7 +312,16 @@ async fn run_price_sync(env: &Env) {
 
         match infra::price::update_anchor_prices(env).await {
             Ok(_) => {
-                console_log!("[INFO] Price sync succeeded on retry {}", attempt);
+                console_log!("[INFO] Anchor price sync succeeded on retry {}", attempt);
+                // anchor 价格更新成功后，立即更新 derived 价格
+                match infra::price::update_derived_prices(env).await {
+                    Ok(_) => {
+                        console_log!("[INFO] Derived price sync succeeded on retry {}", attempt);
+                    }
+                    Err(err) => {
+                        console_warn!("[WARN] Derived price sync failed on retry {}: {}", attempt, err);
+                    }
+                }
                 let _ = kv.delete(PRICE_SYNC_RETRY_STATE_KEY).await;
                 set_price_sync_next_run(&kv, now.saturating_add(PRICE_SYNC_BASE_INTERVAL_MS)).await;
             }
@@ -279,11 +360,20 @@ async fn run_price_sync(env: &Env) {
     console_log!("[INFO] Price sync scheduled run");
     match infra::price::update_anchor_prices(env).await {
         Ok(_) => {
-            console_log!("[INFO] Price sync succeeded");
+            console_log!("[INFO] Anchor price sync succeeded");
+            // anchor 价格更新成功后，立即更新 derived 价格
+            match infra::price::update_derived_prices(env).await {
+                Ok(_) => {
+                    console_log!("[INFO] Derived price sync succeeded");
+                }
+                Err(err) => {
+                    console_warn!("[WARN] Derived price sync failed: {}", err);
+                }
+            }
             set_price_sync_next_run(&kv, now.saturating_add(PRICE_SYNC_BASE_INTERVAL_MS)).await;
         }
         Err(err) => {
-            console_error!("[WARN] Price sync failed: {}", err);
+            console_error!("[WARN] Anchor price sync failed: {}", err);
             let state = PriceSyncRetryState {
                 retries_done: 0,
                 next_retry_ms: now.saturating_add(PRICE_SYNC_RETRY_DELAYS_MS[0]),
@@ -309,6 +399,33 @@ async fn set_price_sync_retry_state(kv: &worker::kv::KvStore, state: &PriceSyncR
     }
 }
 
+/// Readiness probe - checks if the service is ready to accept traffic
+/// This is a lightweight check that only verifies the DB connection.
+/// Use /health for a comprehensive health check including RPC.
+async fn handle_ready(env: &Env) -> worker::Result<Response> {
+    let (db_ok, db_error) = match env.d1("DB") {
+        Ok(db) => match db.prepare("SELECT 1").all().await {
+            Ok(_) => (true, None),
+            Err(err) => (false, Some(err.to_string())),
+        },
+        Err(err) => (false, Some(err.to_string())),
+    };
+
+    if db_ok {
+        Response::from_json(&serde_json::json!({
+            "status": "ready",
+            "version": env!("CARGO_PKG_VERSION"),
+        }))
+    } else {
+        Response::from_json(&serde_json::json!({
+            "status": "not_ready",
+            "error": db_error,
+        }))
+        .map(|r| r.with_status(503))
+    }
+}
+
+/// Liveness probe - comprehensive health check of all dependencies
 async fn handle_health(env: &Env) -> worker::Result<Response> {
     let now = types::now_ms();
 

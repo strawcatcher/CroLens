@@ -4,6 +4,7 @@ pub mod logging;
 pub mod multicall;
 pub mod price;
 pub mod rpc;
+pub mod structured_log;
 pub mod tenderly;
 pub mod token;
 pub mod x402;
@@ -46,7 +47,10 @@ impl Services {
         let multicall = rpc
             .as_ref()
             .map(|client| multicall::MulticallClient::new(client.clone(), multicall_address));
-        let tenderly = tenderly::TenderlyClient::try_new(env);
+        // SimulationClient 需要 RpcClient，优先使用 debug_traceCall
+        let tenderly = rpc
+            .as_ref()
+            .map(|client| tenderly::SimulationClient::try_new(env, client.clone()));
         Ok(Self {
             trace_id: trace_id.to_string(),
             start_ms,

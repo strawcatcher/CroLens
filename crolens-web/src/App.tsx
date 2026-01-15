@@ -1,11 +1,21 @@
+import { Suspense, lazy } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Zap, Github, Twitter, ExternalLink } from "lucide-react";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { Header } from "@/components/layout/Header";
-import { ConsolePage } from "@/features/console/ConsolePage";
-import { DashboardPage } from "@/features/dashboard/DashboardPage";
-import { PlaygroundPage } from "@/features/playground/PlaygroundPage";
+import { PageSkeleton } from "@/components/PageSkeleton";
+
+// Lazy load pages for code splitting
+const PlaygroundPage = lazy(() =>
+  import("@/features/playground/PlaygroundPage").then((m) => ({ default: m.PlaygroundPage }))
+);
+const DashboardPage = lazy(() =>
+  import("@/features/dashboard/DashboardPage").then((m) => ({ default: m.DashboardPage }))
+);
+const ConsolePage = lazy(() =>
+  import("@/features/console/ConsolePage").then((m) => ({ default: m.ConsolePage }))
+);
 
 function Footer() {
   return (
@@ -106,7 +116,7 @@ function Footer() {
           </div>
           <div className="flex items-center gap-4 text-xs text-[#555] font-mono">
             <span className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-[#00FF41] animate-pulse" />
+              <span className="w-2 h-2 rounded-full bg-[#00FF41]" />
               MAINNET LIVE
             </span>
             <span>v1.0.0</span>
@@ -123,7 +133,7 @@ export default function App() {
 
   return (
     <ErrorBoundary title="CroLens crashed">
-      <div className="min-h-screen flex flex-col p5-stripe-bg text-foreground">
+      <div className="min-h-screen flex flex-col text-foreground">
         <Header />
         <main className="flex-1 container py-8">
           <AnimatePresence mode="wait" initial={false}>
@@ -144,34 +154,36 @@ export default function App() {
                   : { duration: 0.15, ease: [0.4, 0, 1, 1] },
               }}
             >
-              <Routes location={location}>
-                <Route path="/" element={<Navigate to="/playground" replace />} />
-                <Route
-                  path="/playground"
-                  element={
-                    <ErrorBoundary title="Playground crashed">
-                      <PlaygroundPage />
-                    </ErrorBoundary>
-                  }
-                />
-                <Route
-                  path="/dashboard"
-                  element={
-                    <ErrorBoundary title="Dashboard crashed">
-                      <DashboardPage />
-                    </ErrorBoundary>
-                  }
-                />
-                <Route
-                  path="/console"
-                  element={
-                    <ErrorBoundary title="Console crashed">
-                      <ConsolePage />
-                    </ErrorBoundary>
-                  }
-                />
-                <Route path="*" element={<Navigate to="/playground" replace />} />
-              </Routes>
+              <Suspense fallback={<PageSkeleton />}>
+                <Routes location={location}>
+                  <Route path="/" element={<Navigate to="/playground" replace />} />
+                  <Route
+                    path="/playground"
+                    element={
+                      <ErrorBoundary title="Playground crashed">
+                        <PlaygroundPage />
+                      </ErrorBoundary>
+                    }
+                  />
+                  <Route
+                    path="/dashboard"
+                    element={
+                      <ErrorBoundary title="Dashboard crashed">
+                        <DashboardPage />
+                      </ErrorBoundary>
+                    }
+                  />
+                  <Route
+                    path="/console"
+                    element={
+                      <ErrorBoundary title="Console crashed">
+                        <ConsolePage />
+                      </ErrorBoundary>
+                    }
+                  />
+                  <Route path="*" element={<Navigate to="/playground" replace />} />
+                </Routes>
+              </Suspense>
             </motion.div>
           </AnimatePresence>
         </main>

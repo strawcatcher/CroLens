@@ -1,11 +1,17 @@
 use alloy_primitives::Address;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use worker::d1::D1Type;
+use worker::kv::KvStore;
 use worker::D1Database;
 
 use crate::error::{CroLensError, Result};
 use crate::infra;
 use crate::types;
+
+const DEX_POOLS_CACHE_PREFIX: &str = "cache:dex_pools:";
+const LENDING_MARKETS_CACHE_PREFIX: &str = "cache:lending_markets:";
+const CONFIG_CACHE_TTL_SECS: u64 = 600; // 10 分钟
 
 #[derive(Debug, Clone)]
 pub struct DexPool {
@@ -24,6 +30,25 @@ pub struct LendingMarket {
     pub underlying_address: Address,
     pub underlying_symbol: String,
     pub collateral_factor: Option<String>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct DexPoolCache {
+    pool_id: String,
+    pool_index: Option<i64>,
+    lp_address: String,
+    token0_address: String,
+    token1_address: String,
+    token0_symbol: String,
+    token1_symbol: String,
+}
+
+#[derive(Serialize, Deserialize)]
+struct LendingMarketCache {
+    ctoken_address: String,
+    underlying_address: String,
+    underlying_symbol: String,
+    collateral_factor: Option<String>,
 }
 
 pub async fn get_protocol_contract(
@@ -56,6 +81,66 @@ pub async fn get_protocol_contract(
         .and_then(|v| v.as_str())
         .ok_or_else(|| CroLensError::DbError("protocol_contracts.address missing".to_string()))?;
     types::parse_address(address)
+}
+
+/// 从 KV 缓存获取 DEX 池子列表
+pub async fn list_dex_pools_cached(
+    db: &D1Database,
+    kv: &KvStore,
+    protocol_id: &str,
+) -> Result<Vec<DexPool>> {
+    let cache_key = format!("{DEX_POOLS_CACHE_PREFIX}{protocol_id}");
+
+    // 先尝试从 KV 缓存获取
+    if let Ok(Some(cached)) = kv.get(&cache_key).text().await {
+        if let Ok(pools_cache) = serde_json::from_str::<Vec<DexPoolCache>>(&cached) {
+            let mut pools = Vec::with_capacity(pools_cache.len());
+            for p in pools_cache {
+                if let (Ok(lp), Ok(t0), Ok(t1)) = (
+                    types::parse_address(&p.lp_address),
+                    types::parse_address(&p.token0_address),
+                    types::parse_address(&p.token1_address),
+                ) {
+                    pools.push(DexPool {
+                        pool_id: p.pool_id,
+                        pool_index: p.pool_index,
+                        lp_address: lp,
+                        token0_address: t0,
+                        token1_address: t1,
+                        token0_symbol: p.token0_symbol,
+                        token1_symbol: p.token1_symbol,
+                    });
+                }
+            }
+            if !pools.is_empty() {
+                return Ok(pools);
+            }
+        }
+    }
+
+    // 缓存未命中，从 DB 加载
+    let pools = list_dex_pools(db, protocol_id).await?;
+
+    // 写入缓存
+    let cache: Vec<DexPoolCache> = pools
+        .iter()
+        .map(|p| DexPoolCache {
+            pool_id: p.pool_id.clone(),
+            pool_index: p.pool_index,
+            lp_address: p.lp_address.to_string(),
+            token0_address: p.token0_address.to_string(),
+            token1_address: p.token1_address.to_string(),
+            token0_symbol: p.token0_symbol.clone(),
+            token1_symbol: p.token1_symbol.clone(),
+        })
+        .collect();
+    if let Ok(json) = serde_json::to_string(&cache) {
+        if let Ok(put) = kv.put(&cache_key, json) {
+            let _ = put.expiration_ttl(CONFIG_CACHE_TTL_SECS).execute().await;
+        }
+    }
+
+    Ok(pools)
 }
 
 pub async fn list_dex_pools(db: &D1Database, protocol_id: &str) -> Result<Vec<DexPool>> {
@@ -230,6 +315,59 @@ async fn find_pool_for_pair(
         token0_symbol,
         token1_symbol,
     }))
+}
+
+/// 从 KV 缓存获取 Lending markets 列表
+pub async fn list_lending_markets_cached(
+    db: &D1Database,
+    kv: &KvStore,
+    protocol_id: &str,
+) -> Result<Vec<LendingMarket>> {
+    let cache_key = format!("{LENDING_MARKETS_CACHE_PREFIX}{protocol_id}");
+
+    // 先尝试从 KV 缓存获取
+    if let Ok(Some(cached)) = kv.get(&cache_key).text().await {
+        if let Ok(markets_cache) = serde_json::from_str::<Vec<LendingMarketCache>>(&cached) {
+            let mut markets = Vec::with_capacity(markets_cache.len());
+            for m in markets_cache {
+                if let (Ok(ctoken), Ok(underlying)) = (
+                    types::parse_address(&m.ctoken_address),
+                    types::parse_address(&m.underlying_address),
+                ) {
+                    markets.push(LendingMarket {
+                        ctoken_address: ctoken,
+                        underlying_address: underlying,
+                        underlying_symbol: m.underlying_symbol,
+                        collateral_factor: m.collateral_factor,
+                    });
+                }
+            }
+            if !markets.is_empty() {
+                return Ok(markets);
+            }
+        }
+    }
+
+    // 缓存未命中，从 DB 加载
+    let markets = list_lending_markets(db, protocol_id).await?;
+
+    // 写入缓存
+    let cache: Vec<LendingMarketCache> = markets
+        .iter()
+        .map(|m| LendingMarketCache {
+            ctoken_address: m.ctoken_address.to_string(),
+            underlying_address: m.underlying_address.to_string(),
+            underlying_symbol: m.underlying_symbol.clone(),
+            collateral_factor: m.collateral_factor.clone(),
+        })
+        .collect();
+    if let Ok(json) = serde_json::to_string(&cache) {
+        if let Ok(put) = kv.put(&cache_key, json) {
+            let _ = put.expiration_ttl(CONFIG_CACHE_TTL_SECS).execute().await;
+        }
+    }
+
+    Ok(markets)
 }
 
 pub async fn list_lending_markets(
