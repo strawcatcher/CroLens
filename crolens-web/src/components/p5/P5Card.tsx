@@ -8,16 +8,14 @@ type P5CardProps = {
 export function P5Card({ title, children, className = '', headerAction }: P5CardProps) {
   return (
     <div className={`relative group ${className}`}>
-      {/* 装饰性背景层 (hover offset shadow) */}
+      {/* 装饰性背景层 (hover offset shadow) - 使用 CSS class 避免重复内联样式 */}
       <div
-        className="absolute inset-0 bg-[#D90018] transform translate-x-1 translate-y-1 -z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
-        style={{ clipPath: 'polygon(0 0, calc(100% - 24px) 0, 100% 24px, 100% 100%, 0 100%)' }}
+        className="absolute inset-0 bg-[#D90018] translate-x-1 translate-y-1 -z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 p5-clip-card"
       />
 
       {/* 主卡片 */}
       <div
-        className="relative bg-[#121212] border-l-2 border-[#333] h-full flex flex-col"
-        style={{ clipPath: 'polygon(0 0, calc(100% - 24px) 0, 100% 24px, 100% 100%, 0 100%)' }}
+        className="relative bg-[#121212] border-l-2 border-[#333] h-full flex flex-col p5-clip-card"
       >
         {/* 顶部红线 */}
         <div className="h-[3px] w-full bg-[#D90018] mb-4" />
@@ -34,7 +32,7 @@ export function P5Card({ title, children, className = '', headerAction }: P5Card
 
         {/* 内容区 */}
         <div className="px-6 pb-6 flex-1 relative z-10">
-          <div className="bg-[#1A1A1A]/50 rounded-sm p-4 h-full border border-white/5 backdrop-blur-sm">
+          <div className="bg-[#1A1A1A] rounded-sm p-4 h-full border border-white/5">
             {children}
           </div>
         </div>

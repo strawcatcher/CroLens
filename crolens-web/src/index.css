@@ -16,6 +16,16 @@
 
   body {
     @apply text-foreground font-sans antialiased;
+    background: var(--bg-base);
+    background-attachment: fixed;
+    overflow-x: hidden;
+  }
+
+  /* Use pseudo-element for stripe pattern to enable GPU compositing */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
     background:
       repeating-linear-gradient(
         -45deg,
@@ -23,9 +33,11 @@
         transparent 2px,
         rgba(255, 255, 255, 0.02) 2px,
         rgba(255, 255, 255, 0.02) 4px
-      ),
-      var(--bg-base);
-    overflow-x: hidden;
+      );
+    pointer-events: none;
+    z-index: -1;
+    /* 使用 translateZ(0) 而非 will-change 以减少内存占用 */
+    transform: translateZ(0);
   }
 
   code,
@@ -45,7 +57,6 @@
 
   .text-sharp {
     transform: translateZ(0);
-    will-change: transform;
   }
 
   ::-webkit-scrollbar {
@@ -94,6 +105,9 @@
       100% 100%,
       0 100%
     );
+    /* 促进 GPU 加速，减少 clip-path 重绘开销 */
+    transform: translateZ(0);
+    backface-visibility: hidden;
   }
 
   .p5-clip-button {
@@ -105,6 +119,9 @@
       0 100%,
       0 12px
     );
+    /* 促进 GPU 加速，减少 clip-path 重绘开销 */
+    transform: translateZ(0);
+    backface-visibility: hidden;
   }
 
   .p5-topline {

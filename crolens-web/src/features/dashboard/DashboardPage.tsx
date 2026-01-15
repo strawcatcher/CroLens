@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { P5Title, P5Card, StatCard } from "@/components/p5";
 import { fetchHealth, fetchStats } from "@/lib/api";
 import { useAppStore } from "@/stores/app";
@@ -118,6 +118,22 @@ export function DashboardPage() {
     [latency],
   );
 
+  // 预先计算最大延迟，避免在 map 中重复计算
+  const chartDataForDisplay = React.useMemo(() => {
+    const last20 = chartData.slice(-20);
+    const maxLatency = Math.max(...last20.map((c) => c.latencyMs), 100);
+    return last20.map((d) => ({
+      ...d,
+      heightPercent: (d.latencyMs / maxLatency) * 100,
+    }));
+  }, [chartData]);
+
+  // 稳定的 SESSION ID，只在组件首次挂载时生成
+  const sessionId = React.useMemo(
+    () => Math.random().toString(36).substring(2, 10).toUpperCase(),
+    [],
+  );
+
   const health = useQuery({
     queryKey: ["health"],
     queryFn: () => fetchHealth(),
@@ -152,7 +168,7 @@ export function DashboardPage() {
       <div className="flex flex-wrap items-center justify-between gap-4 mb-2">
         <StatusBadge status={status} />
         <div className="font-mono text-xs text-[#555]">
-          SESSION ID: #{Math.random().toString(36).substring(2, 10).toUpperCase()}
+          SESSION ID: #{sessionId}
         </div>
       </div>
 
@@ -169,35 +185,57 @@ export function DashboardPage() {
           },
         }}
       >
-        {[
+        <motion.div
+          variants={{
+            hidden: { opacity: 0, y: 20 },
+            show: { opacity: 1, y: 0, transition: { duration: 0.3, ease: [0, 0, 0.2, 1] } },
+          }}
+        >
           <DashboardStatCard
-            key="requests"
             label="TOTAL CALLS"
             value={totalRequests}
             trendValue={totalRequests > 0 ? `+${Math.min(totalRequests, 100)}%` : undefined}
             trend="this session"
             isPositive={true}
-          />,
+          />
+        </motion.div>
+        <motion.div
+          variants={{
+            hidden: { opacity: 0, y: 20 },
+            show: { opacity: 1, y: 0, transition: { duration: 0.3, ease: [0, 0, 0.2, 1] } },
+          }}
+        >
           <DashboardStatCard
-            key="avg"
             label="AVG LATENCY"
             value={avgLatency}
             format={(v) => `${Math.round(v)}ms`}
             trendValue={avgLatency > 0 ? `${avgLatency < 100 ? '-' : '+'}${Math.abs(avgLatency - 100)}ms` : undefined}
             trend="vs target"
             isPositive={avgLatency < 150}
-          />,
+          />
+        </motion.div>
+        <motion.div
+          variants={{
+            hidden: { opacity: 0, y: 20 },
+            show: { opacity: 1, y: 0, transition: { duration: 0.3, ease: [0, 0, 0.2, 1] } },
+          }}
+        >
           <DashboardStatCard
-            key="error"
             label="ERROR RATE"
             value={errorRate}
             format={formatPercent}
             trendValue={errorRate <= 1 ? "STABLE" : "HIGH"}
             trend="threshold 1%"
             isPositive={errorRate <= 1}
-          />,
+          />
+        </motion.div>
+        <motion.div
+          variants={{
+            hidden: { opacity: 0, y: 20 },
+            show: { opacity: 1, y: 0, transition: { duration: 0.3, ease: [0, 0, 0.2, 1] } },
+          }}
+        >
           <DashboardStatCard
-            key="protocols"
             label="PROTOCOLS"
             value={typeof protocolsSupported === "number" ? protocolsSupported : 0}
             format={(v) =>
@@ -206,18 +244,8 @@ export function DashboardPage() {
             trendValue="ACTIVE"
             trend="supported"
             isPositive={true}
-          />,
-        ].map((card, idx) => (
-          <motion.div
-            key={idx}
-            variants={{
-              hidden: { opacity: 0, y: 20 },
-              show: { opacity: 1, y: 0, transition: { duration: 0.3, ease: [0, 0, 0.2, 1] } },
-            }}
-          >
-            {card}
-          </motion.div>
-        ))}
+          />
+        </motion.div>
       </motion.div>
 
       {/* 图表区域 */}
@@ -237,21 +265,17 @@ export function DashboardPage() {
 
                 {/* 模拟柱状图 */}
                 <div className="h-full flex items-end justify-between gap-1 px-2 pb-2 relative z-10">
-                  {chartData.slice(-20).map((d, i) => {
-                    const maxLatency = Math.max(...chartData.map(c => c.latencyMs), 100);
-                    const heightPercent = (d.latencyMs / maxLatency) * 100;
-                    return (
-                      <div
-                        key={i}
-                        className="w-full bg-[#D90018] relative group transition-all duration-300 hover:bg-white"
-                        style={{ height: `${Math.max(heightPercent, 5)}%` }}
-                      >
-                        <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-white text-black text-[10px] px-1 font-mono opacity-0 group-hover:opacity-100 whitespace-nowrap z-20">
-                          {d.latencyMs}ms
-                        </div>
+                  {chartDataForDisplay.map((d) => (
+                    <div
+                      key={`${d.time}-${d.latencyMs}`}
+                      className="w-full bg-[#D90018] relative group hover:bg-white"
+                      style={{ height: `${Math.max(d.heightPercent, 5)}%` }}
+                    >
+                      <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-white text-black text-[10px] px-1 font-mono opacity-0 group-hover:opacity-100 whitespace-nowrap z-20 pointer-events-none">
+                        {d.latencyMs}ms
                       </div>
-                    );
-                  })}
+                    </div>
+                  ))}
                 </div>
                 <div className="flex justify-between text-[#555] font-mono text-xs mt-2 px-2">
                   <span>{chartData[0]?.time ?? '--'}</span>
@@ -297,41 +321,34 @@ export function DashboardPage() {
             <div className="text-sm text-[#555] font-mono">No logs yet.</div>
           ) : (
             <ul className="space-y-2 text-xs">
-              <AnimatePresence initial={false}>
-                {recentLatency.map((l) => {
-                  const width = clamp((l.latencyMs / 300) * 100, 0, 100);
-                  const statusColor =
-                    l.status === "success" ? "text-[#00FF41]" : "text-[#FF4444]";
-                  return (
-                    <motion.li
-                      key={`${l.ts}-${l.tool}-${l.latencyMs}`}
-                      layout
-                      initial={{ opacity: 0, y: -12 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: 12 }}
-                      transition={{ duration: 0.2, ease: [0, 0, 0.2, 1] }}
-                      className="grid grid-cols-[72px_1fr_60px_120px] items-center gap-3 font-mono text-[#A3A3A3] py-2 border-b border-[#333] last:border-0 hover:bg-white/5"
-                    >
-                      <div className="text-[#555]">{formatTime(l.ts)}</div>
-                      <div className="truncate text-white">{l.tool}</div>
-                      <div className={`text-right ${statusColor}`}>
-                        {l.status.toUpperCase()}
+              {recentLatency.map((l) => {
+                const width = clamp((l.latencyMs / 300) * 100, 0, 100);
+                const statusColor =
+                  l.status === "success" ? "text-[#00FF41]" : "text-[#FF4444]";
+                return (
+                  <li
+                    key={`${l.ts}-${l.tool}-${l.latencyMs}`}
+                    className="grid grid-cols-[72px_1fr_60px_120px] items-center gap-3 font-mono text-[#A3A3A3] py-2 border-b border-[#333] last:border-0 hover:bg-white/5"
+                  >
+                    <div className="text-[#555]">{formatTime(l.ts)}</div>
+                    <div className="truncate text-white">{l.tool}</div>
+                    <div className={`text-right ${statusColor}`}>
+                      {l.status.toUpperCase()}
+                    </div>
+                    <div className="flex items-center justify-end gap-2">
+                      <span className="w-10 text-right tabular-nums text-[#A3A3A3]">
+                        {l.latencyMs}ms
+                      </span>
+                      <div className="h-1 w-[60px] overflow-hidden bg-[#333]">
+                        <div
+                          className="h-full bg-[#D90018]"
+                          style={{ width: `${width}%` }}
+                        />
                       </div>
-                      <div className="flex items-center justify-end gap-2">
-                        <span className="w-10 text-right tabular-nums text-[#A3A3A3]">
-                          {l.latencyMs}ms
-                        </span>
-                        <div className="h-1 w-[60px] overflow-hidden bg-[#333]">
-                          <div
-                            className="h-full bg-[#D90018] transition-[width] duration-300"
-                            style={{ width: `${width}%` }}
-                          />
-                        </div>
-                      </div>
-                    </motion.li>
-                  );
-                })}
-              </AnimatePresence>
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>

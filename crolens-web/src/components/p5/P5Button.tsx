@@ -38,13 +38,11 @@ export function P5Button({
       >
         {/* 阴影层 */}
         <span
-          className="absolute inset-0 bg-[#D90018] translate-x-1 translate-y-1 opacity-60 group-hover:translate-x-2 group-hover:translate-y-2 transition-transform duration-200"
-          style={{ clipPath: 'polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px)' }}
+          className="absolute inset-0 bg-[#D90018] translate-x-1 translate-y-1 opacity-60 group-hover:translate-x-2 group-hover:translate-y-2 transition-transform duration-200 p5-clip-button"
         />
         {/* 主体层 */}
         <span
-          className="absolute inset-0 bg-[#D90018] group-hover:bg-[#ff1a35] transition-colors"
-          style={{ clipPath: 'polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px)' }}
+          className="absolute inset-0 bg-[#D90018] group-hover:bg-[#ff1a35] transition-colors p5-clip-button"
         />
         {/* 文字内容 */}
         <span className="relative z-10 flex items-center gap-2 text-black">
