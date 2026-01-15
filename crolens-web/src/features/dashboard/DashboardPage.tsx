@@ -263,16 +263,17 @@ export function DashboardPage() {
                   className="absolute inset-0 border-b border-l border-[#333] z-0 opacity-50 p5-grid-bg"
                 />
 
-                {/* 模拟柱状图 */}
+                {/* 模拟柱状图 - 条纹增强版 */}
                 <div className="h-full flex items-end justify-between gap-1 px-2 pb-2 relative z-10">
                   {chartDataForDisplay.map((d) => (
                     <div
                       key={`${d.time}-${d.latencyMs}`}
-                      className="w-full bg-[#D90018] relative group hover:bg-white"
+                      className="w-full bg-[#D90018] p5-bar-stripe relative group hover:bg-white transition-colors duration-150"
                       style={{ height: `${Math.max(d.heightPercent, 5)}%` }}
                     >
-                      <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-white text-black text-[10px] px-1 font-mono opacity-0 group-hover:opacity-100 whitespace-nowrap z-20 pointer-events-none">
-                        {d.latencyMs}ms
+                      {/* Tooltip */}
+                      <div className="absolute -top-7 left-1/2 -translate-x-1/2 bg-black border border-[#D90018] text-white text-[10px] px-2 py-0.5 font-mono opacity-0 group-hover:opacity-100 whitespace-nowrap z-20 pointer-events-none transform -skew-x-6">
+                        <span className="inline-block skew-x-6">{d.latencyMs}ms</span>
                       </div>
                     </div>
                   ))}
@@ -339,9 +340,9 @@ export function DashboardPage() {
                       <span className="w-10 text-right tabular-nums text-[#A3A3A3]">
                         {l.latencyMs}ms
                       </span>
-                      <div className="h-1 w-[60px] overflow-hidden bg-[#333]">
+                      <div className="h-1.5 w-[60px] overflow-hidden bg-[#333] skew-x-12">
                         <div
-                          className="h-full bg-[#D90018]"
+                          className="h-full bg-[#D90018] p5-bar-stripe"
                           style={{ width: `${width}%` }}
                         />
                       </div>
