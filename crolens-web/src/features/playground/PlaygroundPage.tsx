@@ -26,13 +26,19 @@ import {
 } from "@/features/playground/charts";
 import type {
   AccountSummary,
+  ApprovalStatusResult,
+  BlockInfoResult,
   ContractSearchResponse,
   DecodedTransaction,
   DefiPositions,
+  GasPriceResult,
   JsonRpcResponse,
   Meta,
+  PoolInfoResult,
   SimulationResult,
   SwapPipeline,
+  TokenInfoResult,
+  TokenPriceResult,
   ToolName,
 } from "@/types/api";
 
@@ -43,6 +49,12 @@ type ToolResult =
   | SimulationResult
   | ContractSearchResponse
   | SwapPipeline
+  | TokenInfoResult
+  | PoolInfoResult
+  | GasPriceResult
+  | TokenPriceResult
+  | ApprovalStatusResult
+  | BlockInfoResult
   | { text: string; meta: Meta };
 
 const TOOL_OPTIONS: Array<{
@@ -79,6 +91,36 @@ const TOOL_OPTIONS: Array<{
     value: "construct_swap_tx",
     label: "CONSTRUCT_SWAP_TX",
     description: "Build swap pipeline",
+  },
+  {
+    value: "get_token_info",
+    label: "GET_TOKEN_INFO",
+    description: "Token details & liquidity",
+  },
+  {
+    value: "get_pool_info",
+    label: "GET_POOL_INFO",
+    description: "LP pool TVL & reserves",
+  },
+  {
+    value: "get_gas_price",
+    label: "GET_GAS_PRICE",
+    description: "Current gas & estimates",
+  },
+  {
+    value: "get_token_price",
+    label: "GET_TOKEN_PRICE",
+    description: "Batch token prices",
+  },
+  {
+    value: "get_approval_status",
+    label: "GET_APPROVAL_STATUS",
+    description: "Token approval security check",
+  },
+  {
+    value: "get_block_info",
+    label: "GET_BLOCK_INFO",
+    description: "Block details & gas usage",
   },
 ];
 
@@ -163,6 +205,21 @@ export function PlaygroundPage() {
   const [swapAmountIn, setSwapAmountIn] = React.useState("1000000000000000000");
   const [swapSlippageBps, setSwapSlippageBps] = React.useState(50);
 
+  // New tool states
+  const [tokenQuery, setTokenQuery] = React.useState("CRO");
+  const [poolQuery, setPoolQuery] = React.useState("CRO-USDC");
+  const [poolDex, setPoolDex] = React.useState("vvs");
+  const [priceTokens, setPriceTokens] = React.useState("CRO,USDC,VVS");
+  const [approvalToken, setApprovalToken] = React.useState("");
+  const [blockQuery, setBlockQuery] = React.useState("latest");
+
+  const tokenQueryInputId = `${baseId}-token-query`;
+  const poolQueryInputId = `${baseId}-pool-query`;
+  const poolDexInputId = `${baseId}-pool-dex`;
+  const priceTokensInputId = `${baseId}-price-tokens`;
+  const approvalTokenInputId = `${baseId}-approval-token`;
+  const blockQueryInputId = `${baseId}-block-query`;
+
   const [showRaw, setShowRaw] = React.useState(false);
   const [, setExecutionLog] = React.useState<string[]>([]);
   const [rawResponse, setRawResponse] =
@@ -175,11 +232,18 @@ export function PlaygroundPage() {
     tool === "get_account_summary" ||
     tool === "get_defi_positions" ||
     tool === "decode_transaction" ||
-    tool === "simulate_transaction";
+    tool === "simulate_transaction" ||
+    tool === "get_token_info" ||
+    tool === "get_pool_info" ||
+    tool === "get_gas_price" ||
+    tool === "get_token_price" ||
+    tool === "get_approval_status" ||
+    tool === "get_block_info";
 
   const needsAddress =
     tool === "get_account_summary" ||
     tool === "get_defi_positions" ||
+    tool === "get_approval_status" ||
     tool === "simulate_transaction" ||
     tool === "construct_swap_tx";
 
@@ -202,6 +266,14 @@ export function PlaygroundPage() {
       if (!/^\d+$/.test(swapAmountIn.trim())) return false;
       if (swapSlippageBps < 0 || swapSlippageBps > 5000) return false;
     }
+    // New tools validation
+    if (tool === "get_token_info" && tokenQuery.trim().length === 0)
+      return false;
+    if (tool === "get_pool_info" && poolQuery.trim().length === 0)
+      return false;
+    if (tool === "get_token_price" && priceTokens.trim().length === 0)
+      return false;
+    // get_gas_price, get_approval_status (address checked above), get_block_info need no extra validation
     return true;
   }, [
     address,
@@ -215,6 +287,11 @@ export function PlaygroundPage() {
     swapTokenOut,
     tool,
     txHash,
+    tokenQuery,
+    poolQuery,
+    priceTokens,
+    approvalToken,
+    blockQuery,
   ]);
 
   async function onPaste() {
@@ -278,6 +355,28 @@ export function PlaygroundPage() {
               token_out: swapTokenOut,
               amount_in: swapAmountIn,
               slippage_bps: swapSlippageBps,
+            };
+          case "get_token_info":
+            return { token: tokenQuery, simple_mode: simpleMode };
+          case "get_pool_info":
+            return { pool: poolQuery, dex: poolDex, simple_mode: simpleMode };
+          case "get_gas_price":
+            return { simple_mode: simpleMode };
+          case "get_token_price":
+            return {
+              tokens: priceTokens.split(",").map((t) => t.trim()).filter(Boolean),
+              simple_mode: simpleMode,
+            };
+          case "get_approval_status":
+            return {
+              address,
+              token: approvalToken.trim() || undefined,
+              simple_mode: simpleMode,
+            };
+          case "get_block_info":
+            return {
+              block: blockQuery.trim() || "latest",
+              simple_mode: simpleMode,
             };
         }
       })();
@@ -600,6 +699,106 @@ export function PlaygroundPage() {
                 </div>
               ) : null}
 
+              {tool === "get_token_info" ? (
+                <div className="space-y-4">
+                  <P5Input
+                    id={tokenQueryInputId}
+                    label="TOKEN"
+                    value={tokenQuery}
+                    onChange={(e) => setTokenQuery(e.target.value)}
+                    placeholder="CRO or 0x..."
+                    className="mb-0"
+                  />
+                  <div className="text-xs text-[#A3A3A3] ml-1">
+                    Enter a token symbol (CRO, USDC, VVS) or contract address.
+                  </div>
+                </div>
+              ) : null}
+
+              {tool === "get_pool_info" ? (
+                <div className="space-y-4">
+                  <P5Input
+                    id={poolQueryInputId}
+                    label="POOL"
+                    value={poolQuery}
+                    onChange={(e) => setPoolQuery(e.target.value)}
+                    placeholder="CRO-USDC or 0x..."
+                    className="mb-0"
+                  />
+                  <div className="text-xs text-[#A3A3A3] ml-1">
+                    Enter a pair (e.g. CRO-USDC) or LP address.
+                  </div>
+                  <div className="mb-4">
+                    <label htmlFor={poolDexInputId} className="block font-bebas tracking-wider text-[#A3A3A3] mb-1 ml-1 text-lg">
+                      DEX
+                    </label>
+                    <Select value={poolDex} onValueChange={setPoolDex}>
+                      <SelectTrigger id={poolDexInputId} className="bg-[#242424] border-[#333] text-white">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="vvs">VVS Finance</SelectItem>
+                        <SelectItem value="mm">MM Finance</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              ) : null}
+
+              {tool === "get_gas_price" ? (
+                <div className="bg-[#1A1A1A] border border-[#333] p-4 text-sm text-[#A3A3A3]">
+                  No parameters required. Click Execute to get current gas prices.
+                </div>
+              ) : null}
+
+              {tool === "get_token_price" ? (
+                <div className="space-y-4">
+                  <P5Input
+                    id={priceTokensInputId}
+                    label="TOKENS"
+                    value={priceTokens}
+                    onChange={(e) => setPriceTokens(e.target.value)}
+                    placeholder="CRO,USDC,VVS"
+                    className="mb-0"
+                  />
+                  <div className="text-xs text-[#A3A3A3] ml-1">
+                    Comma-separated list of tokens (max 20).
+                  </div>
+                </div>
+              ) : null}
+
+              {tool === "get_approval_status" ? (
+                <div className="space-y-4">
+                  <P5Input
+                    id={approvalTokenInputId}
+                    label="TOKEN (OPTIONAL)"
+                    value={approvalToken}
+                    onChange={(e) => setApprovalToken(e.target.value)}
+                    placeholder="Leave empty to check all"
+                    className="mb-0"
+                  />
+                  <div className="text-xs text-[#A3A3A3] ml-1">
+                    Specify a token symbol to filter, or leave empty to check top tokens.
+                  </div>
+                </div>
+              ) : null}
+
+              {tool === "get_block_info" ? (
+                <div className="space-y-4">
+                  <P5Input
+                    id={blockQueryInputId}
+                    label="BLOCK"
+                    value={blockQuery}
+                    onChange={(e) => setBlockQuery(e.target.value)}
+                    placeholder="latest, 12345, or 0x..."
+                    className="mb-0"
+                  />
+                  <div className="text-xs text-[#A3A3A3] ml-1">
+                    Enter "latest", a block number, or block hash.
+                  </div>
+                </div>
+              ) : null}
+
               {supportsSimpleMode ? (
                 <div className="flex items-center justify-between py-2 border-t border-[#333]">
                   <label htmlFor={simpleModeSwitchId} className="font-bebas tracking-wider text-[#A3A3A3] text-lg">
@@ -726,7 +925,10 @@ function FormattedResult({
   if (tool === "get_defi_positions" && "vvs" in result) {
     return <DefiPositionsView value={result} />;
   }
-  if (tool === "decode_transaction" && "hash" in result) {
+  if (tool === "get_block_info" && "transactions_count" in result) {
+    return <BlockInfoView value={result as BlockInfoResult} />;
+  }
+  if (tool === "decode_transaction" && "hash" in result && "action" in result) {
     return <DecodedTxView value={result} />;
   }
   if (tool === "simulate_transaction" && "success" in result) {
@@ -737,6 +939,21 @@ function FormattedResult({
   }
   if (tool === "construct_swap_tx" && "steps" in result) {
     return <SwapPipelineView value={result} />;
+  }
+  if (tool === "get_token_info" && "symbol" in result && "decimals" in result) {
+    return <TokenInfoView value={result as TokenInfoResult} />;
+  }
+  if (tool === "get_pool_info" && "pool_address" in result) {
+    return <PoolInfoView value={result as PoolInfoResult} />;
+  }
+  if (tool === "get_gas_price" && "gas_price_gwei" in result) {
+    return <GasPriceView value={result as GasPriceResult} />;
+  }
+  if (tool === "get_token_price" && "prices" in result) {
+    return <TokenPriceView value={result as TokenPriceResult} />;
+  }
+  if (tool === "get_approval_status" && "approvals" in result) {
+    return <ApprovalStatusView value={result as ApprovalStatusResult} />;
   }
 
   return (
@@ -1194,6 +1411,369 @@ function SwapPipelineView({ value }: { value: SwapPipeline }) {
               </div>
             </div>
           ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TokenInfoView({ value }: { value: TokenInfoResult }) {
+  return (
+    <div className="space-y-4">
+      <div className="bg-black/50 border border-[#333] p-4">
+        <div className="font-bebas tracking-wider text-white">TOKEN INFO</div>
+        <div className="mt-3 grid grid-cols-2 gap-4">
+          <div className="bg-[#1A1A1A] border-l-2 border-[#D90018] p-3">
+            <div className="text-xs text-[#A3A3A3] font-bebas tracking-wider">NAME</div>
+            <div className="font-medium text-white mt-1">{value.name}</div>
+          </div>
+          <div className="bg-[#1A1A1A] border-l-2 border-[#D90018] p-3">
+            <div className="text-xs text-[#A3A3A3] font-bebas tracking-wider">SYMBOL</div>
+            <div className="font-medium text-white mt-1">{value.symbol}</div>
+          </div>
+        </div>
+        <div className="mt-3 bg-[#1A1A1A] border-l-2 border-[#D90018] p-3">
+          <div className="text-xs text-[#A3A3A3] font-bebas tracking-wider">ADDRESS</div>
+          <div className="font-mono text-xs text-white mt-1 break-all">{value.address}</div>
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-4">
+          <div className="bg-[#1A1A1A] border-l-2 border-[#00FF41] p-3">
+            <div className="text-xs text-[#A3A3A3] font-bebas tracking-wider">PRICE</div>
+            <div className="text-lg font-bebas text-[#00FF41] mt-1">
+              {value.price_usd ? formatUsd(value.price_usd) : "—"}
+            </div>
+          </div>
+          <div className="bg-[#1A1A1A] border-l-2 border-[#FFD700] p-3">
+            <div className="text-xs text-[#A3A3A3] font-bebas tracking-wider">MARKET CAP</div>
+            <div className="text-lg font-bebas text-[#FFD700] mt-1">
+              {value.market_cap_usd ? formatUsd(value.market_cap_usd) : "—"}
+            </div>
+          </div>
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-4">
+          <div className="bg-[#1A1A1A] p-3">
+            <div className="text-xs text-[#A3A3A3]">Decimals</div>
+            <div className="font-mono text-white mt-1">{value.decimals}</div>
+          </div>
+          <div className="bg-[#1A1A1A] p-3">
+            <div className="text-xs text-[#A3A3A3]">Total Supply</div>
+            <div className="font-mono text-white mt-1 text-sm">{value.total_supply}</div>
+          </div>
+        </div>
+      </div>
+
+      {value.pools.length > 0 && (
+        <div className="bg-black/50 border border-[#333] p-4">
+          <div className="font-bebas tracking-wider text-white mb-3">LIQUIDITY POOLS</div>
+          <div className="space-y-2">
+            {value.pools.map((pool, idx) => (
+              <div key={pool.pair_address || idx} className="bg-[#1A1A1A] border-l-2 border-[#D90018] p-3">
+                <div className="flex items-center justify-between">
+                  <div className="font-medium text-white">{pool.pair}</div>
+                  <Badge variant="secondary">{pool.dex}</Badge>
+                </div>
+                <div className="mt-1 text-xs text-[#A3A3A3]">
+                  TVL: {formatUsd(pool.tvl_usd)}
+                </div>
+                <div className="mt-1 font-mono text-xs text-[#555] break-all">
+                  {pool.pair_address}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PoolInfoView({ value }: { value: PoolInfoResult }) {
+  return (
+    <div className="space-y-4">
+      <div className="bg-black/50 border border-[#333] p-4">
+        <div className="font-bebas tracking-wider text-white">POOL INFO</div>
+        <div className="flex items-center gap-2 mt-2">
+          <Badge variant="default">{value.dex.toUpperCase()}</Badge>
+          <span className="font-medium text-white">{value.token0.symbol} / {value.token1.symbol}</span>
+        </div>
+        <div className="mt-2 font-mono text-xs text-[#A3A3A3] break-all">{value.pool_address}</div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div className="bg-[#1A1A1A] border-l-2 border-[#00FF41] p-4">
+          <div className="text-xs text-[#A3A3A3] font-bebas tracking-wider">TVL</div>
+          <div className="text-2xl font-bebas text-[#00FF41] mt-1">
+            {value.tvl_usd ? formatUsd(value.tvl_usd) : "—"}
+          </div>
+        </div>
+        <div className="bg-[#1A1A1A] border-l-2 border-[#FFD700] p-4">
+          <div className="text-xs text-[#A3A3A3] font-bebas tracking-wider">APY</div>
+          <div className="text-2xl font-bebas text-[#FFD700] mt-1">
+            {value.apy ?? "—"}
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-black/50 border border-[#333] p-4">
+        <div className="font-bebas tracking-wider text-white mb-3">RESERVES</div>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="bg-[#1A1A1A] border-l-2 border-[#D90018] p-3">
+            <div className="text-xs text-[#A3A3A3] font-bebas tracking-wider">{value.token0.symbol}</div>
+            <div className="font-mono text-sm text-white mt-1">{value.token0.reserve}</div>
+            <div className="font-mono text-xs text-[#555] mt-1 break-all">{value.token0.address}</div>
+          </div>
+          <div className="bg-[#1A1A1A] border-l-2 border-[#D90018] p-3">
+            <div className="text-xs text-[#A3A3A3] font-bebas tracking-wider">{value.token1.symbol}</div>
+            <div className="font-mono text-sm text-white mt-1">{value.token1.reserve}</div>
+            <div className="font-mono text-xs text-[#555] mt-1 break-all">{value.token1.address}</div>
+          </div>
+        </div>
+        <div className="mt-3 text-xs text-[#A3A3A3]">
+          Total LP Supply: <span className="font-mono text-white">{value.total_supply}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function GasPriceView({ value }: { value: GasPriceResult }) {
+  const levelColor = {
+    low: "#00FF41",
+    medium: "#FFD700",
+    high: "#FF4444",
+  }[value.level] || "#A3A3A3";
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-black/50 border border-[#333] p-4">
+        <div className="font-bebas tracking-wider text-white">GAS PRICE</div>
+        <div className="mt-4 flex items-baseline gap-3">
+          <div className="text-4xl font-bebas tabular-nums" style={{ color: levelColor }}>
+            {value.gas_price_gwei}
+          </div>
+          <div className="text-xl text-[#A3A3A3]">GWEI</div>
+          <Badge variant={value.level === "low" ? "success" : value.level === "high" ? "destructive" : "warning"}>
+            {value.level.toUpperCase()}
+          </Badge>
+        </div>
+        <div className="mt-2 font-mono text-xs text-[#555]">
+          {value.gas_price_wei} wei
+        </div>
+      </div>
+
+      <div className="bg-black/50 border border-[#333] p-4">
+        <div className="font-bebas tracking-wider text-white mb-3">ESTIMATED COSTS</div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="text-left text-xs text-[#A3A3A3] border-b border-[#333]">
+              <tr>
+                <th className="py-2">OPERATION</th>
+                <th className="py-2 text-right">GAS</th>
+                <th className="py-2 text-right">CRO</th>
+                <th className="py-2 text-right">USD</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#333]">
+              {value.estimates.map((est) => (
+                <tr key={est.operation} className="hover:bg-white/5">
+                  <td className="py-2 font-medium text-white">{est.operation}</td>
+                  <td className="py-2 text-right font-mono text-[#A3A3A3]">{est.gas_units.toLocaleString()}</td>
+                  <td className="py-2 text-right font-mono text-white">{est.cost_cro}</td>
+                  <td className="py-2 text-right text-[#00FF41]">{est.cost_usd ? formatUsd(est.cost_usd) : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="bg-[#1A1A1A] border-l-2 border-[#D90018] p-4">
+        <div className="text-xs text-[#A3A3A3] font-bebas tracking-wider">RECOMMENDATION</div>
+        <div className="mt-1 text-sm text-white">{value.recommendation}</div>
+      </div>
+    </div>
+  );
+}
+
+function TokenPriceView({ value }: { value: TokenPriceResult }) {
+  return (
+    <div className="bg-black/50 border border-[#333] p-4 space-y-3">
+      <div className="font-bebas tracking-wider text-white">TOKEN PRICES</div>
+      <div className="text-xs text-[#A3A3A3]">{value.prices.length} token(s)</div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="text-left text-xs text-[#A3A3A3] border-b border-[#333]">
+            <tr>
+              <th className="py-2">TOKEN</th>
+              <th className="py-2 text-right">PRICE</th>
+              <th className="py-2">SOURCE</th>
+              <th className="py-2">CONFIDENCE</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-[#333]">
+            {value.prices.map((p, idx) => (
+              <tr key={p.address || p.token || idx} className="hover:bg-white/5">
+                <td className="py-2">
+                  <div className="font-medium text-white">{p.token}</div>
+                  {p.address && (
+                    <div className="font-mono text-xs text-[#555]">{p.address.slice(0, 10)}...</div>
+                  )}
+                </td>
+                <td className="py-2 text-right text-lg font-bebas text-[#00FF41]">
+                  {p.price_usd ? formatUsd(p.price_usd) : "—"}
+                </td>
+                <td className="py-2 text-[#A3A3A3]">{p.source}</td>
+                <td className="py-2">
+                  <Badge variant={p.confidence === "high" ? "success" : p.confidence === "medium" ? "warning" : "secondary"}>
+                    {p.confidence}
+                  </Badge>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function ApprovalStatusView({ value }: { value: ApprovalStatusResult }) {
+  const getRiskBadgeVariant = (risk: string) => {
+    switch (risk) {
+      case "danger":
+        return "destructive";
+      case "warning":
+        return "warning";
+      default:
+        return "success";
+    }
+  };
+
+  return (
+    <div className="bg-black/50 border border-[#333] p-4 space-y-4">
+      <div className="font-bebas tracking-wider text-white">TOKEN APPROVALS</div>
+      <div className="text-xs text-[#A3A3A3] font-mono">{value.address}</div>
+
+      {/* Summary */}
+      <div className="grid grid-cols-3 gap-4 border-b border-[#333] pb-4">
+        <div>
+          <div className="text-xs text-[#A3A3A3]">TOTAL APPROVALS</div>
+          <div className="text-lg font-bebas text-white">{value.summary.total_approvals}</div>
+        </div>
+        <div>
+          <div className="text-xs text-[#A3A3A3]">UNLIMITED</div>
+          <div className="text-lg font-bebas text-[#FF6B6B]">{value.summary.unlimited_approvals}</div>
+        </div>
+        <div>
+          <div className="text-xs text-[#A3A3A3]">RISK SCORE</div>
+          <div className={`text-lg font-bebas ${value.summary.risk_score > 50 ? "text-[#FF6B6B]" : value.summary.risk_score > 20 ? "text-[#FFD93D]" : "text-[#00FF41]"}`}>
+            {value.summary.risk_score}/100
+          </div>
+        </div>
+      </div>
+
+      {/* Approvals Table */}
+      {value.approvals.length > 0 ? (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="text-left text-xs text-[#A3A3A3] border-b border-[#333]">
+              <tr>
+                <th className="py-2">TOKEN</th>
+                <th className="py-2">SPENDER</th>
+                <th className="py-2 text-right">ALLOWANCE</th>
+                <th className="py-2">RISK</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#333]">
+              {value.approvals.map((a, idx) => (
+                <tr key={`${a.token_address}-${a.spender_address}-${idx}`} className="hover:bg-white/5">
+                  <td className="py-2">
+                    <div className="font-medium text-white">{a.token_symbol}</div>
+                    <div className="font-mono text-xs text-[#555]">{a.token_address.slice(0, 10)}...</div>
+                  </td>
+                  <td className="py-2">
+                    <div className="text-white">{a.spender_name}</div>
+                    <div className="text-xs text-[#555]">{a.protocol}</div>
+                  </td>
+                  <td className="py-2 text-right">
+                    {a.is_unlimited ? (
+                      <span className="text-[#FF6B6B] font-bebas">UNLIMITED</span>
+                    ) : (
+                      <span className="font-mono text-[#A3A3A3]">{a.allowance}</span>
+                    )}
+                  </td>
+                  <td className="py-2">
+                    <Badge variant={getRiskBadgeVariant(a.risk_level)}>{a.risk_level.toUpperCase()}</Badge>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="text-center py-8 text-[#A3A3A3]">No active approvals found</div>
+      )}
+    </div>
+  );
+}
+
+function BlockInfoView({ value }: { value: BlockInfoResult }) {
+  const gasPercent = parseFloat(value.gas_used_percent);
+
+  return (
+    <div className="bg-black/50 border border-[#333] p-4 space-y-4">
+      <div className="font-bebas tracking-wider text-white">BLOCK INFORMATION</div>
+
+      {/* Block Number & Hash */}
+      <div className="space-y-2">
+        <div className="flex justify-between items-center">
+          <span className="text-xs text-[#A3A3A3]">BLOCK NUMBER</span>
+          <span className="font-bebas text-2xl text-[#00FF41]">#{value.number.toLocaleString()}</span>
+        </div>
+        <div>
+          <div className="text-xs text-[#A3A3A3]">HASH</div>
+          <div className="font-mono text-xs text-white break-all">{value.hash}</div>
+        </div>
+      </div>
+
+      {/* Grid Stats */}
+      <div className="grid grid-cols-2 gap-4 border-t border-[#333] pt-4">
+        <div>
+          <div className="text-xs text-[#A3A3A3]">TIMESTAMP</div>
+          <div className="text-white">{new Date(value.timestamp * 1000).toLocaleString()}</div>
+          <div className="text-xs text-[#555]">{value.timestamp_relative}</div>
+        </div>
+        <div>
+          <div className="text-xs text-[#A3A3A3]">TRANSACTIONS</div>
+          <div className="text-lg font-bebas text-white">{value.transactions_count}</div>
+        </div>
+      </div>
+
+      {/* Gas Usage */}
+      <div className="border-t border-[#333] pt-4 space-y-2">
+        <div className="text-xs text-[#A3A3A3]">GAS USAGE</div>
+        <div className="flex justify-between items-center">
+          <span className="font-mono text-white">{parseInt(value.gas_used).toLocaleString()}</span>
+          <span className="text-[#A3A3A3]">/ {parseInt(value.gas_limit).toLocaleString()}</span>
+        </div>
+        <div className="h-2 bg-[#333] rounded-full overflow-hidden">
+          <div
+            className={`h-full ${gasPercent > 80 ? "bg-[#FF6B6B]" : gasPercent > 50 ? "bg-[#FFD93D]" : "bg-[#00FF41]"}`}
+            style={{ width: `${Math.min(gasPercent, 100)}%` }}
+          />
+        </div>
+        <div className="text-right text-xs text-[#A3A3A3]">{value.gas_used_percent}% used</div>
+      </div>
+
+      {/* Base Fee & Miner */}
+      <div className="grid grid-cols-2 gap-4 border-t border-[#333] pt-4">
+        <div>
+          <div className="text-xs text-[#A3A3A3]">BASE FEE</div>
+          <div className="font-bebas text-white">{value.base_fee_gwei} GWEI</div>
+        </div>
+        <div>
+          <div className="text-xs text-[#A3A3A3]">MINER</div>
+          <div className="font-mono text-xs text-white">{value.miner.slice(0, 10)}...{value.miner.slice(-8)}</div>
         </div>
       </div>
     </div>

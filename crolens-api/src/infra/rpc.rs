@@ -327,6 +327,38 @@ impl RpcClient {
             .await
     }
 
+    /// 获取区块信息
+    /// block_id 可以是 "latest", "pending", "earliest", 区块号 (hex), 或区块哈希
+    pub async fn eth_get_block_by_number(
+        &self,
+        block_id: &str,
+        include_txs: bool,
+    ) -> Result<Value> {
+        self.call(
+            "eth_getBlockByNumber",
+            serde_json::json!([block_id, include_txs]),
+        )
+        .await
+    }
+
+    /// 获取当前 gas 价格
+    pub async fn eth_gas_price(&self) -> Result<U256> {
+        let result = self.call("eth_gasPrice", serde_json::json!([])).await?;
+        let hex_str = result
+            .as_str()
+            .ok_or_else(|| CroLensError::RpcError("eth_gasPrice result is not a string".to_string()))?;
+        types::parse_u256_hex(hex_str)
+    }
+
+    /// 获取 EIP-1559 优先费用
+    pub async fn eth_max_priority_fee_per_gas(&self) -> Result<U256> {
+        let result = self.call("eth_maxPriorityFeePerGas", serde_json::json!([])).await?;
+        let hex_str = result
+            .as_str()
+            .ok_or_else(|| CroLensError::RpcError("eth_maxPriorityFeePerGas result is not a string".to_string()))?;
+        types::parse_u256_hex(hex_str)
+    }
+
     /// 使用 debug_traceCall 模拟交易执行
     /// 提供: 成功/失败预测, Gas 估算, 内部调用追踪, 状态变化检测
     pub async fn debug_trace_call(

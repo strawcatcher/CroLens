@@ -99,6 +99,89 @@ fn tool_definitions() -> Vec<ToolDefinition> {
                 "required": ["from", "token_in", "token_out", "amount_in", "slippage_bps"]
             }),
         },
+        // New tools
+        ToolDefinition {
+            name: "get_token_info".to_string(),
+            description: "Get detailed token information including price, supply, and liquidity."
+                .to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "token": { "type": "string", "description": "Token symbol (e.g. 'VVS') or address" },
+                    "simple_mode": { "type": "boolean" }
+                },
+                "required": ["token"]
+            }),
+        },
+        ToolDefinition {
+            name: "get_pool_info".to_string(),
+            description: "Get LP pool details including TVL, reserves, and APY.".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "pool": { "type": "string", "description": "Pool pair (e.g. 'CRO-USDC') or LP address" },
+                    "dex": { "type": "string", "description": "DEX name (default: 'vvs')" },
+                    "simple_mode": { "type": "boolean" }
+                },
+                "required": ["pool"]
+            }),
+        },
+        ToolDefinition {
+            name: "get_gas_price".to_string(),
+            description: "Get current gas price and estimated costs for common operations."
+                .to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "simple_mode": { "type": "boolean" }
+                },
+                "required": []
+            }),
+        },
+        ToolDefinition {
+            name: "get_token_price".to_string(),
+            description: "Get USD prices for multiple tokens (max 20).".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "tokens": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Array of token symbols or addresses",
+                        "maxItems": 20
+                    },
+                    "simple_mode": { "type": "boolean" }
+                },
+                "required": ["tokens"]
+            }),
+        },
+        ToolDefinition {
+            name: "get_approval_status".to_string(),
+            description: "Check token approval status for known spenders (DEX routers, lending protocols)."
+                .to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "address": { "type": "string", "description": "Wallet address to check" },
+                    "token": { "type": "string", "description": "Optional: specific token to check" },
+                    "simple_mode": { "type": "boolean" }
+                },
+                "required": ["address"]
+            }),
+        },
+        ToolDefinition {
+            name: "get_block_info".to_string(),
+            description: "Get block information (number, timestamp, gas usage, transactions count)."
+                .to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "block": { "type": "string", "description": "Block number, hash, or 'latest'" },
+                    "simple_mode": { "type": "boolean" }
+                },
+                "required": []
+            }),
+        },
     ]
 }
 
@@ -113,7 +196,7 @@ mod tests {
             .get("tools")
             .and_then(|v| v.as_array())
             .expect("tools must be an array");
-        assert_eq!(tools.len(), 6);
+        assert_eq!(tools.len(), 12); // 6 original + 6 new
         for tool in tools {
             assert!(tool.get("name").and_then(|v| v.as_str()).is_some());
             assert!(tool.get("description").and_then(|v| v.as_str()).is_some());
@@ -141,6 +224,12 @@ mod tests {
             "simulate_transaction",
             "search_contract",
             "construct_swap_tx",
+            "get_token_info",
+            "get_pool_info",
+            "get_gas_price",
+            "get_token_price",
+            "get_approval_status",
+            "get_block_info",
         ] {
             assert!(names.contains(&required));
         }

@@ -121,6 +121,19 @@ async fn handle_tools_call(
             "construct_swap_tx" => {
                 domain::swap::construct_swap_tx(&services, params.arguments).await
             }
+            // New tools
+            "get_token_info" => {
+                domain::token_info::get_token_info(&services, params.arguments).await
+            }
+            "get_pool_info" => {
+                domain::pool_info::get_pool_info(&services, params.arguments).await
+            }
+            "get_gas_price" => domain::gas::get_gas_price(&services, params.arguments).await,
+            "get_token_price" => domain::price::get_token_price(&services, params.arguments).await,
+            "get_approval_status" => {
+                domain::approval::get_approval_status(&services, params.arguments).await
+            }
+            "get_block_info" => domain::block::get_block_info(&services, params.arguments).await,
             _ => Err(CroLensError::method_not_found(format!(
                 "Unknown tool: {tool_name}"
             ))),

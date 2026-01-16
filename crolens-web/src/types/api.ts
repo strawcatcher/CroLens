@@ -4,7 +4,13 @@ export type ToolName =
   | "decode_transaction"
   | "simulate_transaction"
   | "search_contract"
-  | "construct_swap_tx";
+  | "construct_swap_tx"
+  | "get_token_info"
+  | "get_pool_info"
+  | "get_gas_price"
+  | "get_token_price"
+  | "get_approval_status"
+  | "get_block_info";
 
 export type JsonRpcId = number | string | null;
 
@@ -245,4 +251,113 @@ export interface X402VerifyResponse {
   tier?: string;
   meta: Meta;
   error?: HttpErrorBody;
+}
+
+// New tool types
+
+export interface TokenPool {
+  dex: string;
+  pair: string;
+  pair_address: string;
+  tvl_usd: string;
+}
+
+export interface TokenInfoResult {
+  address: string;
+  name: string;
+  symbol: string;
+  decimals: number;
+  total_supply: string;
+  price_usd: string | null;
+  market_cap_usd: string | null;
+  pools: TokenPool[];
+  meta: Meta;
+}
+
+export interface PoolInfoResult {
+  pool_address: string;
+  dex: string;
+  token0: {
+    address: string;
+    symbol: string;
+    reserve: string;
+  };
+  token1: {
+    address: string;
+    symbol: string;
+    reserve: string;
+  };
+  total_supply: string;
+  tvl_usd: string | null;
+  apy: string | null;
+  meta: Meta;
+}
+
+export interface GasEstimate {
+  operation: string;
+  gas_units: number;
+  cost_cro: string;
+  cost_usd: string | null;
+}
+
+export interface GasPriceResult {
+  gas_price_gwei: string;
+  gas_price_wei: string;
+  level: "low" | "medium" | "high";
+  estimates: GasEstimate[];
+  recommendation: string;
+  meta: Meta;
+}
+
+export interface TokenPriceEntry {
+  token: string;
+  address: string | null;
+  price_usd: string | null;
+  source: string;
+  confidence: string;
+}
+
+export interface TokenPriceResult {
+  prices: TokenPriceEntry[];
+  meta: Meta;
+}
+
+// Approval Status Types
+
+export interface ApprovalEntry {
+  token_symbol: string;
+  token_address: string;
+  spender_address: string;
+  spender_name: string;
+  protocol: string;
+  allowance: string;
+  is_unlimited: boolean;
+  risk_level: "safe" | "warning" | "danger";
+}
+
+export interface ApprovalStatusResult {
+  address: string;
+  approvals: ApprovalEntry[];
+  summary: {
+    total_approvals: number;
+    unlimited_approvals: number;
+    risk_score: number;
+  };
+  meta: Meta;
+}
+
+// Block Info Types
+
+export interface BlockInfoResult {
+  number: number;
+  hash: string;
+  timestamp: number;
+  timestamp_relative: string;
+  transactions_count: number;
+  gas_used: string;
+  gas_limit: string;
+  gas_used_percent: string;
+  base_fee_gwei: string;
+  miner: string;
+  meta: Meta;
 }

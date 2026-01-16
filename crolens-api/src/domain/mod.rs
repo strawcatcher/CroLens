@@ -1,6 +1,12 @@
+pub mod approval;
 pub mod assets;
+pub mod block;
 pub mod defi;
+pub mod gas;
+pub mod pool_info;
+pub mod price;
 pub mod search;
 pub mod simulation;
 pub mod swap;
+pub mod token_info;
 pub mod transaction;

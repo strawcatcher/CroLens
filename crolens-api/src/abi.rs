@@ -1,6 +1,10 @@
 use alloy_sol_types::sol;
 
 sol! {
+    // ERC20 基础
+    function name() external view returns (string);
+    function symbol() external view returns (string);
+    function decimals() external view returns (uint8);
     function balanceOf(address account) external view returns (uint256);
     function allowance(address owner, address spender) external view returns (uint256);
     function transfer(address recipient, uint256 amount) external returns (bool);
@@ -105,6 +109,11 @@ sol! {
 
     function userInfo(uint256 pid, address user) external view returns (uint256 amount, uint256 rewardDebt);
     function pendingVVS(uint256 pid, address user) external view returns (uint256);
+
+    // MasterChef
+    function poolInfo(uint256 pid) external view returns (address lpToken, uint256 allocPoint, uint256 lastRewardBlock, uint256 accVVSPerShare);
+    function totalAllocPoint() external view returns (uint256);
+    function vvsPerBlock() external view returns (uint256);
 
     struct Call3 { address target; bool allowFailure; bytes callData; }
     struct Result { bool success; bytes returnData; }
