@@ -17,6 +17,13 @@ import { mcpCallRaw } from "@/lib/api";
 import { getMcpErrorMessage } from "@/lib/errors";
 import { useAppStore } from "@/stores/app";
 import { ToolSelector } from "@/features/playground/ToolSelector";
+import {
+  AssetPieChart,
+  DefiBarChart,
+  TransactionFlowChart,
+  createFlowStepsFromTx,
+  StateChangeCard,
+} from "@/features/playground/charts";
 import type {
   AccountSummary,
   ContractSearchResponse,
@@ -774,6 +781,18 @@ function AccountSummaryView({ value }: { value: AccountSummary }) {
     0,
   );
 
+  // Prepare pie chart data
+  const pieChartData = React.useMemo(
+    () =>
+      walletRows
+        .filter(({ valueUsd }) => valueUsd > 0)
+        .map(({ token, valueUsd }) => ({
+          symbol: token.symbol,
+          valueUsd,
+        })),
+    [walletRows],
+  );
+
   return (
     <div className="space-y-4">
       <div className="bg-black/50 border border-[#333] p-4">
@@ -797,6 +816,16 @@ function AccountSummaryView({ value }: { value: AccountSummary }) {
           </div>
         </div>
       </div>
+
+      {/* Asset Distribution Pie Chart */}
+      {pieChartData.length > 0 && (
+        <div className="bg-black/50 border border-[#333] p-4">
+          <div className="font-bebas tracking-wider text-white mb-4">ASSET DISTRIBUTION</div>
+          <div className="h-[200px]">
+            <AssetPieChart data={pieChartData} className="h-full" />
+          </div>
+        </div>
+      )}
 
       <div className="overflow-x-auto bg-black/50 border border-[#333]">
         <table className="w-full text-sm">
@@ -825,9 +854,9 @@ function AccountSummaryView({ value }: { value: AccountSummary }) {
                   </td>
                   <td className="px-4 py-2">
                     <div className="flex items-center justify-end gap-2">
-                      <div className="h-1 w-[60px] overflow-hidden bg-[#333]">
+                      <div className="h-1.5 w-[60px] overflow-hidden bg-[#333] skew-x-12">
                         <div
-                          className="h-full bg-[#D90018] transition-[width] duration-300"
+                          className="h-full bg-[#D90018] p5-bar-stripe transition-[width] duration-300"
                           style={{ width: `${percent}%` }}
                         />
                       </div>
@@ -844,13 +873,13 @@ function AccountSummaryView({ value }: { value: AccountSummary }) {
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-        <div className="bg-[#1A1A1A] p-4 border-l-2 border-[#D90018]">
+        <div className="bg-[#1A1A1A] p5-halftone-strong p-4 border-l-2 border-[#D90018]">
           <div className="text-xs text-[#A3A3A3] font-bebas tracking-wider">VVS LIQUIDITY</div>
           <div className="mt-1 text-lg font-bebas tabular-nums text-white">
             {formatUsd(value.defi_summary.vvs_liquidity_usd)}
           </div>
         </div>
-        <div className="bg-[#1A1A1A] p-4 border-l-2 border-[#D90018]">
+        <div className="bg-[#1A1A1A] p5-halftone-strong p-4 border-l-2 border-[#D90018]">
           <div className="text-xs text-[#A3A3A3] font-bebas tracking-wider">TECTONIC NET</div>
           <div className="mt-1 text-lg font-bebas tabular-nums text-white">
             {formatUsdAmount(
@@ -865,8 +894,40 @@ function AccountSummaryView({ value }: { value: AccountSummary }) {
 }
 
 function DefiPositionsView({ value }: { value: DefiPositions }) {
+  // Prepare bar chart data
+  const barChartData = React.useMemo(() => {
+    const data: Array<{ protocol: string; valueUsd: number; type?: string }> = [];
+
+    const vvsLiquidity = parseDecimal(value.vvs.total_liquidity_usd);
+    if (vvsLiquidity > 0) {
+      data.push({ protocol: 'VVS', valueUsd: vvsLiquidity, type: 'Liquidity' });
+    }
+
+    const tectonicSupply = parseDecimal(value.tectonic.total_supply_usd);
+    if (tectonicSupply > 0) {
+      data.push({ protocol: 'Tectonic', valueUsd: tectonicSupply, type: 'Supply' });
+    }
+
+    const tectonicBorrow = parseDecimal(value.tectonic.total_borrow_usd);
+    if (tectonicBorrow > 0) {
+      data.push({ protocol: 'Tectonic', valueUsd: -tectonicBorrow, type: 'Borrow' });
+    }
+
+    return data.sort((a, b) => Math.abs(b.valueUsd) - Math.abs(a.valueUsd));
+  }, [value]);
+
   return (
     <div className="space-y-4">
+      {/* DeFi Distribution Chart */}
+      {barChartData.length > 0 && (
+        <div className="bg-black/50 border border-[#333] p-4">
+          <DefiBarChart
+            data={barChartData.map(d => ({ ...d, valueUsd: Math.abs(d.valueUsd) }))}
+            className="min-h-[120px]"
+          />
+        </div>
+      )}
+
       <div className="bg-black/50 border border-[#333] p-4">
         <div className="font-bebas tracking-wider text-white mb-2">VVS FINANCE</div>
         <div className="text-xs text-[#A3A3A3] mb-3">
@@ -880,7 +941,7 @@ function DefiPositionsView({ value }: { value: DefiPositions }) {
             {value.vvs.positions.map((p) => (
               <div
                 key={p.pool_id}
-                className="bg-[#1A1A1A] border-l-2 border-[#D90018] p-3"
+                className="bg-[#1A1A1A] p5-halftone-bg border-l-2 border-[#D90018] p-3"
               >
                 <div className="flex items-center justify-between gap-2">
                   <div className="font-medium text-white">{p.pool_name}</div>
@@ -928,7 +989,7 @@ function DefiPositionsView({ value }: { value: DefiPositions }) {
                 {value.tectonic.supplies.map((s) => (
                   <div
                     key={s.market_address}
-                    className="bg-[#1A1A1A] border-l-2 border-[#00FF41] p-3"
+                    className="bg-[#1A1A1A] p5-halftone-bg border-l-2 border-[#00FF41] p-3"
                   >
                     <div className="flex items-center justify-between gap-2">
                       <div className="font-medium text-white">{s.asset_symbol}</div>
@@ -955,7 +1016,7 @@ function DefiPositionsView({ value }: { value: DefiPositions }) {
                 {value.tectonic.borrows.map((b) => (
                   <div
                     key={b.market_address}
-                    className="bg-[#1A1A1A] border-l-2 border-[#FFD700] p-3"
+                    className="bg-[#1A1A1A] p5-halftone-bg border-l-2 border-[#FFD700] p-3"
                   >
                     <div className="flex items-center justify-between gap-2">
                       <div className="font-medium text-white">{b.asset_symbol}</div>
@@ -980,74 +1041,83 @@ function DefiPositionsView({ value }: { value: DefiPositions }) {
 }
 
 function DecodedTxView({ value }: { value: DecodedTransaction }) {
+  // Generate flow steps from decoded transaction
+  const flowSteps = React.useMemo(
+    () => createFlowStepsFromTx(value),
+    [value],
+  );
+
   return (
-    <div className="bg-black/50 border border-[#333] p-4 space-y-3">
-      <div className="font-bebas tracking-wider text-white">DECODED TRANSACTION</div>
-      <div className="font-mono text-xs text-[#A3A3A3] break-all">{value.hash}</div>
-      <div className="flex flex-wrap items-center gap-2">
-        <Badge variant="default">{value.action}</Badge>
-        <Badge variant="secondary">{value.decoded.method_name}</Badge>
-        <Badge variant="warning">{value.status}</Badge>
-      </div>
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-        <div className="bg-[#1A1A1A] border-l-2 border-[#D90018] p-3">
-          <div className="text-xs text-[#A3A3A3] font-bebas tracking-wider">FROM</div>
-          <div className="font-mono text-xs text-white mt-1">{value.from}</div>
+    <div className="space-y-4">
+      <div className="bg-black/50 border border-[#333] p-4 space-y-3">
+        <div className="font-bebas tracking-wider text-white">DECODED TRANSACTION</div>
+        <div className="font-mono text-xs text-[#A3A3A3] break-all">{value.hash}</div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="default">{value.action}</Badge>
+          <Badge variant="secondary">{value.decoded.method_name}</Badge>
+          <Badge variant="warning">{value.status}</Badge>
         </div>
-        <div className="bg-[#1A1A1A] border-l-2 border-[#D90018] p-3">
-          <div className="text-xs text-[#A3A3A3] font-bebas tracking-wider">TO</div>
-          <div className="font-mono text-xs text-white mt-1">{value.to}</div>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <div className="bg-[#1A1A1A] p5-halftone-bg border-l-2 border-[#D90018] p-3">
+            <div className="text-xs text-[#A3A3A3] font-bebas tracking-wider">FROM</div>
+            <div className="font-mono text-xs text-white mt-1">{value.from}</div>
+          </div>
+          <div className="bg-[#1A1A1A] p5-halftone-bg border-l-2 border-[#D90018] p-3">
+            <div className="text-xs text-[#A3A3A3] font-bebas tracking-wider">TO</div>
+            <div className="font-mono text-xs text-white mt-1">{value.to}</div>
+          </div>
+        </div>
+        <div className="bg-[#1A1A1A] p5-halftone-bg border-l-2 border-[#D90018] p-3">
+          <div className="text-xs text-[#A3A3A3] font-bebas tracking-wider">GAS USED</div>
+          <div className="font-mono text-sm text-white mt-1">{value.gas_used}</div>
         </div>
       </div>
-      <div className="bg-[#1A1A1A] border-l-2 border-[#D90018] p-3">
-        <div className="text-xs text-[#A3A3A3] font-bebas tracking-wider">GAS USED</div>
-        <div className="font-mono text-sm text-white mt-1">{value.gas_used}</div>
-      </div>
+
+      {/* Transaction Flow Chart */}
+      {flowSteps.length > 0 && (
+        <div className="bg-black/50 border border-[#333] p-4">
+          <TransactionFlowChart steps={flowSteps} />
+        </div>
+      )}
     </div>
   );
 }
 
 function SimulationView({ value }: { value: SimulationResult }) {
   const ok = !!value.success;
+  const hasStateChanges = Array.isArray(value.state_changes) && value.state_changes.length > 0;
+
   return (
-    <div className="bg-black/50 border border-[#333] p-4 space-y-4">
-      <div className="font-bebas tracking-wider text-white">SIMULATION</div>
-      <div className="text-xs text-[#A3A3A3]">Tenderly-backed when configured</div>
-      <div className="flex items-center gap-2">
-        <Badge variant={ok ? "success" : "destructive"}>
-          {ok ? "Success" : "Failed"}
-        </Badge>
-        {value.simulation_available === false ? (
-          <Badge variant="warning">Unavailable</Badge>
-        ) : null}
-        {value.gas_estimated ? (
-          <Badge variant="secondary">Gas: {value.gas_estimated}</Badge>
-        ) : null}
+    <div className="space-y-4">
+      <div className="bg-black/50 border border-[#333] p-4 space-y-4">
+        <div className="font-bebas tracking-wider text-white">SIMULATION</div>
+        <div className="text-xs text-[#A3A3A3]">Tenderly-backed when configured</div>
+        <div className="flex items-center gap-2">
+          <Badge variant={ok ? "success" : "destructive"}>
+            {ok ? "Success" : "Failed"}
+          </Badge>
+          {value.simulation_available === false ? (
+            <Badge variant="warning">Unavailable</Badge>
+          ) : null}
+          {value.gas_estimated ? (
+            <Badge variant="secondary">Gas: {value.gas_estimated}</Badge>
+          ) : null}
+        </div>
       </div>
 
-      {Array.isArray(value.state_changes) &&
-      value.state_changes.length > 0 ? (
-        <div className="space-y-2">
-          <div className="font-bebas tracking-wider text-[#A3A3A3]">STATE CHANGES</div>
-          <div className="space-y-2">
-            {value.state_changes.map((c, idx) => (
-              <div
-                key={idx}
-                className="bg-[#1A1A1A] border-l-2 border-[#D90018] p-3"
-              >
-                <div className="text-sm font-medium text-white">{c.description}</div>
-                <div className="mt-1 grid grid-cols-1 gap-2 text-xs text-[#A3A3A3] md:grid-cols-2 font-mono">
-                  <div>from: {c.from}</div>
-                  <div>to: {c.to}</div>
-                  <div>amount: {c.amount}</div>
-                  <div>token: {c.token}</div>
-                </div>
-              </div>
-            ))}
-          </div>
+      {/* State Changes Card */}
+      {hasStateChanges ? (
+        <div className="bg-black/50 border border-[#333] p-4">
+          <StateChangeCard
+            changes={value.state_changes!}
+            success={ok}
+            gasEstimated={value.gas_estimated}
+          />
         </div>
       ) : (
-        <div className="text-sm text-[#555]">No decoded state changes.</div>
+        <div className="bg-black/50 border border-[#333] p-4">
+          <div className="text-sm text-[#555]">No decoded state changes.</div>
+        </div>
       )}
     </div>
   );
