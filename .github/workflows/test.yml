@@ -28,6 +28,17 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
 
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            crolens-api/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('crolens-api/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
       - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq
 
@@ -40,6 +51,11 @@ jobs:
         run: |
           cd crolens-api
           cargo test
+
+      - name: Build wrangler worker
+        run: |
+          cd crolens-api
+          npx wrangler deploy --dry-run --outdir=build/worker
 
       - name: Backend integration tests
         run: |
