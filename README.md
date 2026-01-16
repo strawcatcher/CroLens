@@ -206,4 +206,4 @@ MIT
 
 ## Acknowledgments
 
-Built for [Cronos Hackathon 2025](https://cronos.org/) - Best Dev Tooling Track
+Built for [Cronos Hackathon 2025](https://cronos.org/)
