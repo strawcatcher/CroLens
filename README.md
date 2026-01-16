@@ -6,7 +6,7 @@ CroLens transforms complex blockchain data into structured, AI-friendly response
 
 ## Features
 
-- **MCP Protocol Compatible** - JSON-RPC 2.0 interface for Claude Desktop and AI Agents
+- **MCP Protocol Compatible** - JSON-RPC 2.0 interface for AI Agents and LLM applications
 - **Cronos Native** - Deep integration with VVS Finance and Tectonic Protocol
 - **Semantic Translation** - Raw blockchain data → human-readable summaries
 - **Transaction Builder** - Construct swap transactions with built-in simulation guard
@@ -18,6 +18,12 @@ CroLens transforms complex blockchain data into structured, AI-friendly response
 |------|-------------|
 | `get_account_summary` | Complete account overview: wallet balances + DeFi positions |
 | `get_defi_positions` | Detailed DeFi positions (VVS LP, Tectonic supply/borrow) |
+| `get_token_info` | Query token metadata (name, symbol, decimals, total supply) |
+| `get_token_price` | Batch query token prices via VVS pools |
+| `get_pool_info` | Query VVS LP pool details and reserves |
+| `get_gas_price` | Get current gas price in gwei/CRO |
+| `get_block_info` | Get block details by number or 'latest' |
+| `get_approval_status` | Check ERC20 token allowance for spender |
 | `decode_transaction` | Translate transaction hash to human-readable action |
 | `simulate_transaction` | Simulate transaction execution with state changes |
 | `search_contract` | Search contracts by name, symbol, or address |
@@ -25,9 +31,9 @@ CroLens transforms complex blockchain data into structured, AI-friendly response
 
 ## Quick Start
 
-### Claude Desktop Integration
+### MCP Client Integration
 
-Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
+Add to your MCP client configuration:
 
 ```json
 {
@@ -46,7 +52,7 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 ### Direct API Usage
 
 ```bash
-curl -X POST https://crolens-api.YOUR_SUBDOMAIN.workers.dev \
+curl -X POST https://crolens-api.crolens.workers.dev \
   -H "Content-Type: application/json" \
   -H "x-api-key: cl_sk_your_key" \
   -d '{
