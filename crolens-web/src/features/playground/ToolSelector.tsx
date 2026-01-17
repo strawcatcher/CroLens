@@ -15,13 +15,22 @@ export type ToolSelectorProps = {
 
 export function ToolSelector({ value, options, onValueChange, className }: ToolSelectorProps) {
   return (
-    <div className={cn("flex flex-col gap-1 w-full h-full overflow-y-auto pr-2", className)}>
+    <div
+      role="tablist"
+      aria-label="MCP tools"
+      className={cn("flex flex-col gap-1 w-full h-full overflow-y-auto pr-2", className)}
+    >
       {options.map((tool) => {
         const isActive = value === tool.value;
         return (
           <button
+            type="button"
             key={tool.value}
             onClick={() => onValueChange(tool.value)}
+            role="tab"
+            aria-label={tool.value}
+            aria-selected={isActive}
+            tabIndex={isActive ? 0 : -1}
             className={cn(
               "relative group w-full text-left px-4 py-3 transition-all outline-none focus:ring-1 focus:ring-white/50",
               isActive ? "pl-6" : "hover:pl-5"
