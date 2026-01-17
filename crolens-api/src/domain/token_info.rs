@@ -1,4 +1,4 @@
-use alloy_primitives::{Address, U256};
+use alloy_primitives::U256;
 use alloy_sol_types::SolCall;
 use serde::Deserialize;
 use serde_json::Value;
@@ -28,11 +28,11 @@ pub async fn get_token_info(services: &infra::Services, args: Value) -> Result<V
         ));
     }
 
-    // 1. 尝试解析代币 - 支持地址或 symbol
+    // 1. Resolve token (address or symbol).
     let tokens = infra::token::list_tokens_cached(&services.db, &services.kv).await?;
     let token = infra::token::resolve_token(&tokens, token_query)?;
 
-    // 2. 获取链上数据 (name, symbol, decimals, totalSupply)
+    // 2. Fetch on-chain metadata via multicall (name, symbol, decimals, totalSupply).
     let multicall = services.multicall()?;
     let calls = vec![
         Call {
@@ -55,7 +55,7 @@ pub async fn get_token_info(services: &infra::Services, args: Value) -> Result<V
 
     let results = multicall.aggregate(calls).await?;
 
-    // 解析结果
+    // Decode multicall return data.
     let name = results
         .get(0)
         .and_then(|r| r.as_ref().ok())
@@ -86,24 +86,24 @@ pub async fn get_token_info(services: &infra::Services, args: Value) -> Result<V
 
     let total_supply_formatted = types::format_units(&total_supply, decimals);
 
-    // 3. 获取价格
+    // 3. Fetch token price (best-effort).
     let price_usd = infra::price::get_price_usd(services, &token)
         .await?
         .unwrap_or(0.0);
 
-    // 4. 查找主要流动性池
+    // 4. Find main liquidity pools.
     let pools = infra::config::list_dex_pools_cached(&services.db, &services.kv, "vvs").await?;
     let token_pools: Vec<_> = pools
         .iter()
         .filter(|p| p.token0_address == token.address || p.token1_address == token.address)
         .collect();
 
-    // 计算流动性 (需要获取 reserves)
+    // Compute liquidity (requires pool reserves).
     let mut main_pools: Vec<Value> = Vec::new();
     let mut total_liquidity_usd = 0.0;
 
     if !token_pools.is_empty() {
-        // 批量获取所有池子的 reserves
+        // Batch fetch reserves for all pools.
         let reserve_calls: Vec<Call> = token_pools
             .iter()
             .map(|pool| Call {
@@ -114,7 +114,7 @@ pub async fn get_token_info(services: &infra::Services, args: Value) -> Result<V
 
         let reserve_results = multicall.aggregate(reserve_calls).await?;
 
-        // 获取所有代币价格用于计算 TVL
+        // Fetch token prices for TVL estimation.
         let price_map = infra::price::get_prices_usd_batch(services, &tokens).await?;
 
         for (pool, result) in token_pools.iter().zip(reserve_results.into_iter()) {
@@ -123,7 +123,7 @@ pub async fn get_token_info(services: &infra::Services, args: Value) -> Result<V
                     let reserve0 = U256::from(decoded.reserve0);
                     let reserve1 = U256::from(decoded.reserve1);
 
-                    // 获取 token0 和 token1 的信息
+                    // Resolve token0/token1 metadata.
                     let token0 = tokens.iter().find(|t| t.address == pool.token0_address);
                     let token1 = tokens.iter().find(|t| t.address == pool.token1_address);
 
@@ -143,7 +143,7 @@ pub async fn get_token_info(services: &infra::Services, args: Value) -> Result<V
                     let tvl = amount0 * price0 + amount1 * price1;
                     total_liquidity_usd += tvl;
 
-                    // 只显示 TVL > $100 的池子
+                    // Only include pools with TVL > $100.
                     if tvl > 100.0 {
                         main_pools.push(serde_json::json!({
                             "dex": "vvs",
@@ -156,7 +156,7 @@ pub async fn get_token_info(services: &infra::Services, args: Value) -> Result<V
             }
         }
 
-        // 按 TVL 排序，只取前 5 个
+        // Sort by TVL and keep top 5 pools.
         main_pools.sort_by(|a, b| {
             let tvl_a = a
                 .get("tvl_usd")
@@ -173,7 +173,7 @@ pub async fn get_token_info(services: &infra::Services, args: Value) -> Result<V
         main_pools.truncate(5);
     }
 
-    // 5. 计算市值 (如果有价格)
+    // 5. Compute market cap (if price is available).
     let total_supply_f64 = total_supply_formatted.parse::<f64>().unwrap_or(0.0);
     let market_cap_usd = if price_usd > 0.0 && total_supply_f64 > 0.0 {
         Some(price_usd * total_supply_f64)
@@ -181,7 +181,7 @@ pub async fn get_token_info(services: &infra::Services, args: Value) -> Result<V
         None
     };
 
-    // 6. 返回结果
+    // 6. Build response.
     if input.simple_mode {
         let mcap_str = market_cap_usd
             .map(|v| format_currency(v))
@@ -219,7 +219,7 @@ pub async fn get_token_info(services: &infra::Services, args: Value) -> Result<V
     }))
 }
 
-/// 格式化货币显示 (K, M, B)
+/// Format currency with K/M/B suffixes.
 fn format_currency(value: f64) -> String {
     if value >= 1_000_000_000.0 {
         format!("${:.2}B", value / 1_000_000_000.0)
@@ -229,5 +229,33 @@ fn format_currency(value: f64) -> String {
         format!("${:.2}K", value / 1_000.0)
     } else {
         format!("${:.2}", value)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn format_currency_scales() {
+        assert_eq!(format_currency(999.0), "$999.00");
+        assert_eq!(format_currency(1_000.0), "$1.00K");
+        assert_eq!(format_currency(1_000_000.0), "$1.00M");
+        assert_eq!(format_currency(1_000_000_000.0), "$1.00B");
+    }
+
+    #[test]
+    fn args_deserialize_defaults() {
+        let json = serde_json::json!({ "token": "VVS" });
+        let args: GetTokenInfoArgs = serde_json::from_value(json).expect("args should parse");
+        assert_eq!(args.token, "VVS");
+        assert!(!args.simple_mode);
+    }
+
+    #[test]
+    fn args_deserialize_simple_mode_true() {
+        let json = serde_json::json!({ "token": "VVS", "simple_mode": true });
+        let args: GetTokenInfoArgs = serde_json::from_value(json).expect("args should parse");
+        assert!(args.simple_mode);
     }
 }

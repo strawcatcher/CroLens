@@ -11,27 +11,33 @@ struct GetTokenPriceArgs {
     simple_mode: bool,
 }
 
+const MAX_TOKENS_PER_REQUEST: usize = 20;
+
+fn validate_token_price_request(tokens: &[String]) -> Result<()> {
+    if tokens.is_empty() {
+        return Err(CroLensError::invalid_params(
+            "tokens array must not be empty".to_string(),
+        ));
+    }
+    if tokens.len() > MAX_TOKENS_PER_REQUEST {
+        return Err(CroLensError::invalid_params(format!(
+            "Maximum {MAX_TOKENS_PER_REQUEST} tokens per request"
+        )));
+    }
+    Ok(())
+}
+
 /// Get prices for multiple tokens
 pub async fn get_token_price(services: &infra::Services, args: Value) -> Result<Value> {
     let input: GetTokenPriceArgs = serde_json::from_value(args)
         .map_err(|err| CroLensError::invalid_params(format!("Invalid input: {err}")))?;
 
-    if input.tokens.is_empty() {
-        return Err(CroLensError::invalid_params(
-            "tokens array must not be empty".to_string(),
-        ));
-    }
+    validate_token_price_request(&input.tokens)?;
 
-    if input.tokens.len() > 20 {
-        return Err(CroLensError::invalid_params(
-            "Maximum 20 tokens per request".to_string(),
-        ));
-    }
-
-    // 获取所有代币列表
+    // Load token list.
     let all_tokens = infra::token::list_tokens_cached(&services.db, &services.kv).await?;
 
-    // 解析请求的代币
+    // Resolve requested tokens.
     let mut requested_tokens = Vec::new();
     let mut not_found = Vec::new();
 
@@ -49,19 +55,19 @@ pub async fn get_token_price(services: &infra::Services, args: Value) -> Result<
         )));
     }
 
-    // 批量获取价格
+    // Fetch prices in batch.
     let price_map = infra::price::get_prices_usd_batch(services, &requested_tokens).await?;
 
-    // 构建结果
+    // Build result.
     let mut prices = Vec::new();
     for token in &requested_tokens {
         let price_usd = price_map.get(&token.address).copied().unwrap_or(0.0);
 
-        // 判断价格来源和置信度
+        // Determine source/confidence.
         let (source, confidence) = if token.is_stablecoin {
             ("pegged", "high")
         } else if price_usd > 0.0 {
-            // 简化判断：有价格就是 high，否则是 low
+            // Simplified heuristic: if we have a price, mark it as high confidence.
             ("derived", "high")
         } else {
             ("unknown", "low")
@@ -76,7 +82,7 @@ pub async fn get_token_price(services: &infra::Services, args: Value) -> Result<
         }));
     }
 
-    // 返回结果
+    // Build response.
     if input.simple_mode {
         let text_parts: Vec<String> = prices
             .iter()
@@ -96,7 +102,7 @@ pub async fn get_token_price(services: &infra::Services, args: Value) -> Result<
         "meta": services.meta()
     });
 
-    // 如果有未找到的代币，添加警告
+    // Add warnings for unknown tokens.
     if !not_found.is_empty() {
         result["warnings"] = serde_json::json!([{
             "type": "tokens_not_found",
@@ -105,4 +111,44 @@ pub async fn get_token_price(services: &infra::Services, args: Value) -> Result<
     }
 
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_request_rejects_empty() {
+        let tokens: Vec<String> = Vec::new();
+        let err = validate_token_price_request(&tokens).unwrap_err();
+        assert!(matches!(err, CroLensError::InvalidParams(_)));
+    }
+
+    #[test]
+    fn validate_request_rejects_over_limit() {
+        let tokens = vec!["CRO".to_string(); MAX_TOKENS_PER_REQUEST + 1];
+        let err = validate_token_price_request(&tokens).unwrap_err();
+        assert!(matches!(err, CroLensError::InvalidParams(_)));
+    }
+
+    #[test]
+    fn validate_request_allows_limit() {
+        let tokens = vec!["CRO".to_string(); MAX_TOKENS_PER_REQUEST];
+        validate_token_price_request(&tokens).expect("should allow max tokens");
+    }
+
+    #[test]
+    fn args_deserialize_defaults() {
+        let json = serde_json::json!({ "tokens": ["CRO"] });
+        let args: GetTokenPriceArgs = serde_json::from_value(json).expect("args should parse");
+        assert_eq!(args.tokens, vec!["CRO".to_string()]);
+        assert!(!args.simple_mode);
+    }
+
+    #[test]
+    fn args_deserialize_simple_mode_true() {
+        let json = serde_json::json!({ "tokens": ["CRO"], "simple_mode": true });
+        let args: GetTokenPriceArgs = serde_json::from_value(json).expect("args should parse");
+        assert!(args.simple_mode);
+    }
 }

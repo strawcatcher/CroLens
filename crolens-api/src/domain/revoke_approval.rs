@@ -53,3 +53,45 @@ pub async fn construct_revoke_approval(services: &infra::Services, args: Value) 
     }))
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn args_deserialize_defaults() {
+        let json = serde_json::json!({
+            "token": "VVS",
+            "spender": "0x145863Eb42Cf62847A6Ca784e6416C1682b1b2Ae"
+        });
+        let args: RevokeApprovalArgs = serde_json::from_value(json).expect("args should parse");
+        assert_eq!(args.token, "VVS");
+        assert!(!args.simple_mode);
+    }
+
+    #[test]
+    fn args_deserialize_simple_mode_true() {
+        let json = serde_json::json!({
+            "token": "0x2D03bece6747ADC00E1a131BBA1469C15fD11e03",
+            "spender": "0x145863Eb42Cf62847A6Ca784e6416C1682b1b2Ae",
+            "simple_mode": true
+        });
+        let args: RevokeApprovalArgs = serde_json::from_value(json).expect("args should parse");
+        assert!(args.simple_mode);
+    }
+
+    #[test]
+    fn revoke_approval_calldata_is_approve_zero() {
+        let spender =
+            types::parse_address("0x145863Eb42Cf62847A6Ca784e6416C1682b1b2Ae").unwrap();
+        let calldata = abi::approveCall {
+            spender,
+            amount: U256::ZERO,
+        }
+        .abi_encode();
+
+        assert_eq!(calldata.len(), 4 + 32 + 32);
+        let hex = types::bytes_to_hex0x(&calldata);
+        assert!(hex.starts_with("0x095ea7b3"));
+        assert!(hex.ends_with(&"0".repeat(64)));
+    }
+}

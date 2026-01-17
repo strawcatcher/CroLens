@@ -12,6 +12,17 @@ struct HealthAlertsArgs {
     simple_mode: bool,
 }
 
+fn approval_risk_alert(risk_score: u64) -> Option<Value> {
+    if risk_score < 20 {
+        return None;
+    }
+    Some(serde_json::json!({
+        "category": "approvals",
+        "level": "warning",
+        "message": "High token approval risk score.",
+    }))
+}
+
 pub async fn get_health_alerts(services: &infra::Services, args: Value) -> Result<Value> {
     let input: HealthAlertsArgs = serde_json::from_value(args)
         .map_err(|err| CroLensError::invalid_params(format!("Invalid input: {err}")))?;
@@ -32,12 +43,8 @@ pub async fn get_health_alerts(services: &infra::Services, args: Value) -> Resul
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
 
-        if risk_score >= 20 {
-            alerts.push(serde_json::json!({
-                "category": "approvals",
-                "level": "warning",
-                "message": "High token approval risk score.",
-            }));
+        if let Some(alert) = approval_risk_alert(risk_score) {
+            alerts.push(alert);
         }
     }
 
@@ -57,3 +64,33 @@ pub async fn get_health_alerts(services: &infra::Services, args: Value) -> Resul
     }))
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn approval_risk_alert_threshold() {
+        assert!(approval_risk_alert(0).is_none());
+        assert!(approval_risk_alert(19).is_none());
+        let alert = approval_risk_alert(20).expect("should emit alert");
+        assert_eq!(alert.get("category").and_then(|v| v.as_str()), Some("approvals"));
+        assert_eq!(alert.get("level").and_then(|v| v.as_str()), Some("warning"));
+    }
+
+    #[test]
+    fn args_deserialize_defaults() {
+        let json = serde_json::json!({ "address": "0x1234567890123456789012345678901234567890" });
+        let args: HealthAlertsArgs = serde_json::from_value(json).expect("args should parse");
+        assert!(!args.simple_mode);
+    }
+
+    #[test]
+    fn args_deserialize_simple_mode_true() {
+        let json = serde_json::json!({
+            "address": "0x1234567890123456789012345678901234567890",
+            "simple_mode": true
+        });
+        let args: HealthAlertsArgs = serde_json::from_value(json).expect("args should parse");
+        assert!(args.simple_mode);
+    }
+}

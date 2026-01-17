@@ -91,3 +91,55 @@ fn decode_known(selector: &str, bytes: &[u8]) -> (String, Value) {
     ("unknown".to_string(), Value::Null)
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn decode_known_transfer() {
+        let data = "0xa9059cbb0000000000000000000000001234567890123456789012345678901234567890000000000000000000000000000000000000000000000000000000000000000a";
+        let bytes = types::hex0x_to_bytes(data).expect("valid hex calldata");
+        let (method, params) = decode_known("0xa9059cbb", &bytes);
+        assert_eq!(method, "transfer");
+        assert_eq!(
+            params.get("to").and_then(|v| v.as_str()),
+            Some("0x1234567890123456789012345678901234567890")
+        );
+        assert_eq!(params.get("amount").and_then(|v| v.as_str()), Some("10"));
+    }
+
+    #[test]
+    fn decode_known_approve() {
+        let data = "0x095ea7b3000000000000000000000000145863eb42cf62847a6ca784e6416c1682b1b2aeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+        let bytes = types::hex0x_to_bytes(data).expect("valid hex calldata");
+        let (method, params) = decode_known("0x095ea7b3", &bytes);
+        assert_eq!(method, "approve");
+        assert_eq!(
+            params.get("spender").and_then(|v| v.as_str()),
+            Some("0x145863Eb42Cf62847A6Ca784e6416C1682b1b2Ae")
+        );
+    }
+
+    #[test]
+    fn decode_known_unknown_selector() {
+        let bytes = vec![0u8; 4];
+        let (method, params) = decode_known("0xdeadbeef", &bytes);
+        assert_eq!(method, "unknown");
+        assert!(params.is_null());
+    }
+
+    #[test]
+    fn args_deserialize_defaults() {
+        let json = serde_json::json!({ "data": "0xa9059cbb" });
+        let args: DecodeCalldataArgs = serde_json::from_value(json).expect("args should parse");
+        assert_eq!(args.data, "0xa9059cbb");
+        assert!(!args.simple_mode);
+    }
+
+    #[test]
+    fn args_deserialize_simple_mode_true() {
+        let json = serde_json::json!({ "data": "0xa9059cbb", "simple_mode": true });
+        let args: DecodeCalldataArgs = serde_json::from_value(json).expect("args should parse");
+        assert!(args.simple_mode);
+    }
+}

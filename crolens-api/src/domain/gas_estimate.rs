@@ -14,6 +14,25 @@ fn default_value() -> String {
     "0".to_string()
 }
 
+fn validate_calldata_hex(data: &str) -> Result<()> {
+    let trimmed = data.trim();
+    if !trimmed.starts_with("0x") {
+        return Err(CroLensError::invalid_params(
+            "data must be 0x-prefixed hex".to_string(),
+        ));
+    }
+    let _ = types::hex0x_to_bytes(trimmed)?;
+    Ok(())
+}
+
+fn parse_value_u256(value: &str) -> Result<U256> {
+    if value.trim().starts_with("0x") {
+        types::parse_u256_hex(value)
+    } else {
+        types::parse_u256_dec(value)
+    }
+}
+
 #[derive(Debug, Deserialize)]
 struct EstimateGasArgs {
     from: String,
@@ -34,18 +53,9 @@ pub async fn estimate_gas(services: &infra::Services, args: Value) -> Result<Val
     let to = types::parse_address(&input.to)?;
 
     let data = input.data.trim();
-    if !data.starts_with("0x") {
-        return Err(CroLensError::invalid_params(
-            "data must be 0x-prefixed hex".to_string(),
-        ));
-    }
-    let _ = types::hex0x_to_bytes(data)?;
+    validate_calldata_hex(data)?;
 
-    let value_u256 = if input.value.trim().starts_with("0x") {
-        types::parse_u256_hex(&input.value)?
-    } else {
-        types::parse_u256_dec(&input.value)?
-    };
+    let value_u256 = parse_value_u256(&input.value)?;
 
     let Ok(rpc) = services.rpc() else {
         return Ok(serde_json::json!({
@@ -98,3 +108,44 @@ pub async fn estimate_gas(services: &infra::Services, args: Value) -> Result<Val
     }))
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn args_deserialize_defaults() {
+        let json = serde_json::json!({
+            "from": "0x1234567890123456789012345678901234567890",
+            "to": "0x145863Eb42Cf62847A6Ca784e6416C1682b1b2Ae"
+        });
+        let args: EstimateGasArgs = serde_json::from_value(json).expect("args should parse");
+        assert_eq!(args.data, "0x");
+        assert_eq!(args.value, "0");
+        assert!(!args.simple_mode);
+    }
+
+    #[test]
+    fn validate_calldata_hex_accepts_empty_and_bytes() {
+        validate_calldata_hex("0x").expect("0x should be valid");
+        validate_calldata_hex("0x00").expect("0x00 should be valid");
+    }
+
+    #[test]
+    fn validate_calldata_hex_rejects_missing_prefix() {
+        let err = validate_calldata_hex("00").unwrap_err();
+        assert!(matches!(err, CroLensError::InvalidParams(_)));
+    }
+
+    #[test]
+    fn parse_value_u256_dec_and_hex() {
+        assert_eq!(parse_value_u256("10").unwrap(), U256::from(10u64));
+        assert_eq!(parse_value_u256("0xa").unwrap(), U256::from(10u64));
+        assert_eq!(parse_value_u256("0x").unwrap(), U256::ZERO);
+    }
+
+    #[test]
+    fn parse_value_u256_rejects_invalid() {
+        let err = parse_value_u256("not-a-number").unwrap_err();
+        assert!(matches!(err, CroLensError::InvalidParams(_)));
+    }
+}

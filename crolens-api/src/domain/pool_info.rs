@@ -1,4 +1,4 @@
-use alloy_primitives::{Address, U256};
+use alloy_primitives::U256;
 use alloy_sol_types::SolCall;
 use serde::Deserialize;
 use serde_json::Value;
@@ -18,6 +18,20 @@ struct GetPoolInfoArgs {
     simple_mode: bool,
 }
 
+fn normalize_pool_symbol(symbol: &str) -> String {
+    let s = symbol.trim().to_uppercase();
+    // Treat CRO and WCRO as equivalent for pair lookups.
+    if s == "CRO" { "WCRO".to_string() } else { s }
+}
+
+fn pool_symbols_match(query0: &str, query1: &str, pool0: &str, pool1: &str) -> bool {
+    let q0 = normalize_pool_symbol(query0);
+    let q1 = normalize_pool_symbol(query1);
+    let p0 = normalize_pool_symbol(pool0);
+    let p1 = normalize_pool_symbol(pool1);
+    (p0 == q0 && p1 == q1) || (p0 == q1 && p1 == q0)
+}
+
 /// Get detailed LP pool information
 pub async fn get_pool_info(services: &infra::Services, args: Value) -> Result<Value> {
     let input: GetPoolInfoArgs = serde_json::from_value(args)
@@ -33,16 +47,16 @@ pub async fn get_pool_info(services: &infra::Services, args: Value) -> Result<Va
     let dex = input.dex.as_deref().unwrap_or("vvs");
     let pools = infra::config::list_dex_pools_cached(&services.db, &services.kv, dex).await?;
 
-    // 解析池子 - 支持 LP 地址或 "TOKEN0-TOKEN1" 格式
+    // Resolve pool by LP address or "TOKEN0-TOKEN1" pair string.
     let pool = if pool_query.starts_with("0x") {
-        // 按地址查找
+        // Lookup by LP address.
         let address = types::parse_address(pool_query)?;
         pools
             .iter()
             .find(|p| p.lp_address == address)
             .ok_or_else(|| CroLensError::invalid_params(format!("Pool not found: {pool_query}")))?
     } else {
-        // 按 pair 名称查找 (如 "CRO-USDC" 或 "WCRO-USDC")
+        // Lookup by pair name (e.g. "CRO-USDC" or "WCRO-USDC").
         let parts: Vec<&str> = pool_query.split('-').collect();
         if parts.len() != 2 {
             return Err(CroLensError::invalid_params(
@@ -52,30 +66,15 @@ pub async fn get_pool_info(services: &infra::Services, args: Value) -> Result<Va
         let sym0 = parts[0].trim().to_uppercase();
         let sym1 = parts[1].trim().to_uppercase();
 
-        // 处理 CRO/WCRO 的等价性
-        let normalize = |s: &str| -> String {
-            if s == "CRO" {
-                "WCRO".to_string()
-            } else {
-                s.to_string()
-            }
-        };
-        let sym0_norm = normalize(&sym0);
-        let sym1_norm = normalize(&sym1);
-
         pools
             .iter()
-            .find(|p| {
-                let p0 = normalize(&p.token0_symbol);
-                let p1 = normalize(&p.token1_symbol);
-                (p0 == sym0_norm && p1 == sym1_norm) || (p0 == sym1_norm && p1 == sym0_norm)
-            })
+            .find(|p| pool_symbols_match(&sym0, &sym1, &p.token0_symbol, &p.token1_symbol))
             .ok_or_else(|| {
                 CroLensError::invalid_params(format!("Pool not found: {}-{}", sym0, sym1))
             })?
     };
 
-    // 获取链上数据
+    // Fetch on-chain data.
     let multicall = services.multicall()?;
     let calls = vec![
         // getReserves
@@ -92,7 +91,7 @@ pub async fn get_pool_info(services: &infra::Services, args: Value) -> Result<Va
 
     let results = multicall.aggregate(calls).await?;
 
-    // 解析 reserves
+    // Decode reserves.
     let (reserve0, reserve1) = results
         .get(0)
         .and_then(|r| r.as_ref().ok())
@@ -100,7 +99,7 @@ pub async fn get_pool_info(services: &infra::Services, args: Value) -> Result<Va
         .map(|v| (U256::from(v.reserve0), U256::from(v.reserve1)))
         .unwrap_or((U256::ZERO, U256::ZERO));
 
-    // 解析 total LP supply
+    // Decode total LP supply.
     let total_lp_supply = results
         .get(1)
         .and_then(|r| r.as_ref().ok())
@@ -108,7 +107,7 @@ pub async fn get_pool_info(services: &infra::Services, args: Value) -> Result<Va
         .map(|v| U256::from(v._0))
         .unwrap_or(U256::ZERO);
 
-    // 获取代币信息
+    // Load token metadata.
     let tokens = infra::token::list_tokens_cached(&services.db, &services.kv).await?;
     let token0 = tokens.iter().find(|t| t.address == pool.token0_address);
     let token1 = tokens.iter().find(|t| t.address == pool.token1_address);
@@ -123,7 +122,7 @@ pub async fn get_pool_info(services: &infra::Services, args: Value) -> Result<Va
     let reserve0_f64 = reserve0_formatted.parse::<f64>().unwrap_or(0.0);
     let reserve1_f64 = reserve1_formatted.parse::<f64>().unwrap_or(0.0);
 
-    // 获取价格
+    // Fetch prices.
     let price_map = infra::price::get_prices_usd_batch(services, &tokens).await?;
     let price0 = price_map
         .get(&pool.token0_address)
@@ -138,7 +137,7 @@ pub async fn get_pool_info(services: &infra::Services, args: Value) -> Result<Va
     let value1_usd = reserve1_f64 * price1;
     let tvl_usd = value0_usd + value1_usd;
 
-    // 计算价格比率
+    // Compute price ratio.
     let price_ratio = if reserve0_f64 > 0.0 && reserve1_f64 > 0.0 {
         format!(
             "1 {} = {:.6} {}",
@@ -150,10 +149,10 @@ pub async fn get_pool_info(services: &infra::Services, args: Value) -> Result<Va
         "N/A".to_string()
     };
 
-    // 尝试获取 APY (从 MasterChef)
+    // Best-effort APY from MasterChef.
     let apy = get_pool_apy(services, pool.pool_index).await.ok().flatten();
 
-    // 返回结果
+    // Build response.
     if input.simple_mode {
         let apy_str = apy
             .map(|v| format!("{:.2}%", v))
@@ -192,13 +191,13 @@ pub async fn get_pool_info(services: &infra::Services, args: Value) -> Result<Va
     }))
 }
 
-/// 尝试从 MasterChef 获取池子 APY
+/// Best-effort APY proxy based on MasterChef allocation weight.
 async fn get_pool_apy(services: &infra::Services, pool_index: Option<i64>) -> Result<Option<f64>> {
     let Some(pid) = pool_index else {
         return Ok(None);
     };
 
-    // 获取 MasterChef 地址
+    // Get MasterChef contract address.
     let masterchef =
         match infra::config::get_protocol_contract(&services.db, "vvs", "masterchef").await {
             Ok(addr) => addr,
@@ -230,7 +229,7 @@ async fn get_pool_apy(services: &infra::Services, pool_index: Option<i64>) -> Re
 
     let results = multicall.aggregate(calls).await?;
 
-    // 解析 poolInfo
+    // Decode poolInfo.
     let alloc_point = results
         .get(0)
         .and_then(|r| r.as_ref().ok())
@@ -256,8 +255,8 @@ async fn get_pool_apy(services: &infra::Services, pool_index: Option<i64>) -> Re
         return Ok(None);
     }
 
-    // 简化的 APY 计算 (仅供参考，实际需要更多数据)
-    // 这里只返回 allocation 比例，实际 APY 需要 TVL 和 VVS 价格
+    // Simplified APY proxy (allocation weight only).
+    // Real APY needs TVL and VVS price; we return allocation percentage as a proxy.
     let alloc_f64: f64 = types::format_units(&alloc_point, 0)
         .parse()
         .unwrap_or(0.0);
@@ -266,9 +265,52 @@ async fn get_pool_apy(services: &infra::Services, pool_index: Option<i64>) -> Re
         .unwrap_or(1.0);
 
     if total_f64 > 0.0 {
-        // 返回权重百分比 (不是真正的 APY，但可以作为相对指标)
+        // Return weight percentage (not real APY, but a relative indicator).
         Ok(Some((alloc_f64 / total_f64) * 100.0))
     } else {
         Ok(None)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalize_pool_symbol_cro() {
+        assert_eq!(normalize_pool_symbol("CRO"), "WCRO");
+        assert_eq!(normalize_pool_symbol("cro"), "WCRO");
+        assert_eq!(normalize_pool_symbol(" WCRO "), "WCRO");
+        assert_eq!(normalize_pool_symbol("USDC"), "USDC");
+    }
+
+    #[test]
+    fn pool_symbols_match_is_order_insensitive_and_normalizes_cro() {
+        assert!(pool_symbols_match("CRO", "USDC", "WCRO", "USDC"));
+        assert!(pool_symbols_match("USDC", "CRO", "WCRO", "USDC"));
+        assert!(pool_symbols_match("WCRO", "USDC", "CRO", "USDC"));
+        assert!(!pool_symbols_match("VVS", "USDC", "WCRO", "USDC"));
+    }
+
+    #[test]
+    fn args_deserialize_defaults() {
+        let json = serde_json::json!({ "pool": "CRO-USDC" });
+        let args: GetPoolInfoArgs = serde_json::from_value(json).expect("args should parse");
+        assert_eq!(args.pool, "CRO-USDC");
+        assert!(args.dex.is_none());
+        assert!(!args.simple_mode);
+    }
+
+    #[test]
+    fn args_deserialize_with_options() {
+        let json = serde_json::json!({
+            "pool": "0x1234567890123456789012345678901234567890",
+            "dex": "vvs",
+            "simple_mode": true
+        });
+        let args: GetPoolInfoArgs = serde_json::from_value(json).expect("args should parse");
+        assert_eq!(args.pool, "0x1234567890123456789012345678901234567890");
+        assert_eq!(args.dex.as_deref(), Some("vvs"));
+        assert!(args.simple_mode);
     }
 }

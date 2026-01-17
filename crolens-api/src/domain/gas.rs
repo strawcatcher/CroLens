@@ -2,7 +2,7 @@ use alloy_primitives::U256;
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::error::{CroLensError, Result};
+use crate::error::Result;
 use crate::infra;
 use crate::types;
 
@@ -20,6 +20,37 @@ const GAS_SWAP: u64 = 150_000;
 const GAS_ADD_LIQUIDITY: u64 = 200_000;
 const GAS_REMOVE_LIQUIDITY: u64 = 180_000;
 
+fn gas_price_level(gas_price_gwei: f64) -> &'static str {
+    if gas_price_gwei < 3000.0 {
+        "low"
+    } else if gas_price_gwei < 8000.0 {
+        "medium"
+    } else {
+        "high"
+    }
+}
+
+fn recommendation_for_level(level: &str) -> &'static str {
+    match level {
+        "low" => "Gas prices are low. Good time for large transactions.",
+        "medium" => "Gas prices are moderate. Normal operations recommended.",
+        "high" => "Gas prices are high. Consider waiting for lower fees.",
+        _ => "Unable to determine gas level.",
+    }
+}
+
+fn estimate_cost(gas_price: U256, gas: u64, cro_price_usd: f64) -> (String, String, String) {
+    let cost_wei = gas_price * U256::from(gas);
+    let cost_cro = types::format_units(&cost_wei, 18);
+    let cost_cro_f64: f64 = cost_cro.parse().unwrap_or(0.0);
+    let cost_usd = cost_cro_f64 * cro_price_usd;
+    (
+        gas.to_string(),
+        format!("{:.6}", cost_cro_f64),
+        format!("{:.4}", cost_usd),
+    )
+}
+
 /// Get current gas price and estimated costs
 pub async fn get_gas_price(services: &infra::Services, args: Value) -> Result<Value> {
     let input: GetGasPriceArgs = serde_json::from_value(args).unwrap_or(GetGasPriceArgs {
@@ -28,53 +59,32 @@ pub async fn get_gas_price(services: &infra::Services, args: Value) -> Result<Va
 
     let rpc = services.rpc()?;
 
-    // 获取当前 gas price
+    // Fetch current gas price.
     let gas_price = rpc.eth_gas_price().await?;
     let gas_price_gwei = types::format_units(&gas_price, 9);
     let gas_price_f64: f64 = gas_price_gwei.parse().unwrap_or(0.0);
 
-    // 尝试获取 EIP-1559 费用 (如果支持)
+    // Try EIP-1559 fees (best-effort).
     let (base_fee, priority_fee) = get_eip1559_fees(rpc).await.unwrap_or((None, None));
 
-    // 判断 gas 水平
-    let level = if gas_price_f64 < 3000.0 {
-        "low"
-    } else if gas_price_f64 < 8000.0 {
-        "medium"
-    } else {
-        "high"
-    };
+    // Classify gas level.
+    let level = gas_price_level(gas_price_f64);
 
-    // 获取 CRO 价格用于计算成本
+    // Fetch CRO price for USD estimates.
     let cro_price_usd = get_cro_price(services).await.unwrap_or(0.1);
 
-    // 计算各种操作的估算成本
-    let estimate_cost = |gas: u64| -> (String, String, String) {
-        let cost_wei = gas_price * U256::from(gas);
-        let cost_cro = types::format_units(&cost_wei, 18);
-        let cost_cro_f64: f64 = cost_cro.parse().unwrap_or(0.0);
-        let cost_usd = cost_cro_f64 * cro_price_usd;
-        (
-            gas.to_string(),
-            format!("{:.6}", cost_cro_f64),
-            format!("{:.4}", cost_usd),
-        )
-    };
+    // Estimate typical transaction costs.
+    let (transfer_gas, transfer_cro, transfer_usd) = estimate_cost(gas_price, GAS_TRANSFER, cro_price_usd);
+    let (erc20_gas, erc20_cro, erc20_usd) =
+        estimate_cost(gas_price, GAS_ERC20_TRANSFER, cro_price_usd);
+    let (approve_gas, approve_cro, approve_usd) = estimate_cost(gas_price, GAS_APPROVE, cro_price_usd);
+    let (swap_gas, swap_cro, swap_usd) = estimate_cost(gas_price, GAS_SWAP, cro_price_usd);
+    let (add_liq_gas, add_liq_cro, add_liq_usd) =
+        estimate_cost(gas_price, GAS_ADD_LIQUIDITY, cro_price_usd);
+    let (remove_liq_gas, remove_liq_cro, remove_liq_usd) =
+        estimate_cost(gas_price, GAS_REMOVE_LIQUIDITY, cro_price_usd);
 
-    let (transfer_gas, transfer_cro, transfer_usd) = estimate_cost(GAS_TRANSFER);
-    let (erc20_gas, erc20_cro, erc20_usd) = estimate_cost(GAS_ERC20_TRANSFER);
-    let (approve_gas, approve_cro, approve_usd) = estimate_cost(GAS_APPROVE);
-    let (swap_gas, swap_cro, swap_usd) = estimate_cost(GAS_SWAP);
-    let (add_liq_gas, add_liq_cro, add_liq_usd) = estimate_cost(GAS_ADD_LIQUIDITY);
-    let (remove_liq_gas, remove_liq_cro, remove_liq_usd) = estimate_cost(GAS_REMOVE_LIQUIDITY);
-
-    // 生成建议
-    let recommendation = match level {
-        "low" => "Gas prices are low. Good time for large transactions.",
-        "medium" => "Gas prices are moderate. Normal operations recommended.",
-        "high" => "Gas prices are high. Consider waiting for lower fees.",
-        _ => "Unable to determine gas level.",
-    };
+    let recommendation = recommendation_for_level(level);
 
     if input.simple_mode {
         let text = format!(
@@ -127,24 +137,24 @@ pub async fn get_gas_price(services: &infra::Services, args: Value) -> Result<Va
     }))
 }
 
-/// 尝试获取 EIP-1559 费用
+/// Best-effort EIP-1559 fee hints.
 async fn get_eip1559_fees(
     rpc: &infra::rpc::RpcClient,
 ) -> Result<(Option<f64>, Option<f64>)> {
-    // Cronos 可能不完全支持 EIP-1559，尝试获取
+    // Cronos may not fully support EIP-1559.
     let priority_fee = rpc.eth_max_priority_fee_per_gas().await.ok();
     let priority_gwei = priority_fee.map(|v| {
         let s = types::format_units(&v, 9);
         s.parse::<f64>().unwrap_or(0.0)
     });
 
-    // Base fee 通常从最新区块获取，这里简化处理
+    // Base fee is typically fetched from the latest block; omitted here.
     Ok((None, priority_gwei))
 }
 
-/// 获取 CRO 价格
+/// Resolve CRO price (best-effort).
 async fn get_cro_price(services: &infra::Services) -> Result<f64> {
-    // 尝试从 KV 缓存获取 CRO 价格
+    // Try KV cache first.
     let key = "price:anchor:cro";
     if let Ok(Some(text)) = services.kv.get(key).text().await {
         if let Ok(price) = text.parse::<f64>() {
@@ -152,6 +162,52 @@ async fn get_cro_price(services: &infra::Services) -> Result<f64> {
         }
     }
 
-    // 回退到默认值
+    // Fallback.
     Ok(0.1)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn gas_price_level_boundaries() {
+        assert_eq!(gas_price_level(0.0), "low");
+        assert_eq!(gas_price_level(2999.99), "low");
+        assert_eq!(gas_price_level(3000.0), "medium");
+        assert_eq!(gas_price_level(7999.99), "medium");
+        assert_eq!(gas_price_level(8000.0), "high");
+    }
+
+    #[test]
+    fn recommendation_messages() {
+        assert!(recommendation_for_level("low").contains("low"));
+        assert!(recommendation_for_level("medium").contains("moderate"));
+        assert!(recommendation_for_level("high").contains("high"));
+        assert_eq!(recommendation_for_level("unknown"), "Unable to determine gas level.");
+    }
+
+    #[test]
+    fn estimate_cost_formats() {
+        // 1 gwei and a transfer should cost 0.000021 CRO.
+        let gas_price = U256::from(1_000_000_000u64);
+        let (gas, cro, usd) = estimate_cost(gas_price, GAS_TRANSFER, 0.1);
+        assert_eq!(gas, "21000");
+        assert_eq!(cro, "0.000021");
+        assert_eq!(usd, "0.0000");
+    }
+
+    #[test]
+    fn args_deserialize_defaults() {
+        let json = serde_json::json!({});
+        let args: GetGasPriceArgs = serde_json::from_value(json).expect("args should parse");
+        assert!(!args.simple_mode);
+    }
+
+    #[test]
+    fn args_deserialize_simple_mode_true() {
+        let json = serde_json::json!({ "simple_mode": true });
+        let args: GetGasPriceArgs = serde_json::from_value(json).expect("args should parse");
+        assert!(args.simple_mode);
+    }
 }

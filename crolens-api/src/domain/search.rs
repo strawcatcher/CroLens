@@ -16,12 +16,12 @@ fn default_limit() -> u8 {
     20
 }
 
-pub async fn search_contract(services: &infra::Services, args: Value) -> Result<Value> {
-    let input: SearchArgs = serde_json::from_value(args)
-        .map_err(|err| CroLensError::invalid_params(format!("Invalid input: {err}")))?;
+fn normalize_limit(limit: u8) -> i64 {
+    limit.clamp(1, 50) as i64
+}
 
-    let limit = input.limit.clamp(1, 50) as i64;
-    let q = input.query.trim();
+fn validate_search_query(query: &str) -> Result<String> {
+    let q = query.trim();
     if q.is_empty() {
         return Err(CroLensError::invalid_params(
             "query must not be empty".to_string(),
@@ -32,8 +32,22 @@ pub async fn search_contract(services: &infra::Services, args: Value) -> Result<
             "query too long (max 200 characters)".to_string(),
         ));
     }
+    Ok(q.to_string())
+}
 
-    let like = format!("%{}%", q.replace('%', "\\%").replace('_', "\\_"));
+fn build_like_pattern(query: &str) -> String {
+    let escaped = query.replace('%', "\\%").replace('_', "\\_");
+    format!("%{}%", escaped)
+}
+
+pub async fn search_contract(services: &infra::Services, args: Value) -> Result<Value> {
+    let input: SearchArgs = serde_json::from_value(args)
+        .map_err(|err| CroLensError::invalid_params(format!("Invalid input: {err}")))?;
+
+    let limit = normalize_limit(input.limit);
+    let q = validate_search_query(&input.query)?;
+
+    let like = build_like_pattern(&q);
     let like_arg = D1Type::Text(&like);
     let limit_arg = D1Type::Integer(limit as i32);
     let statement = services
@@ -61,4 +75,60 @@ pub async fn search_contract(services: &infra::Services, args: Value) -> Result<
     }
 
     Ok(serde_json::json!({ "results": out, "meta": services.meta() }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_limit_is_20() {
+        assert_eq!(default_limit(), 20);
+    }
+
+    #[test]
+    fn normalize_limit_clamps() {
+        assert_eq!(normalize_limit(0), 1);
+        assert_eq!(normalize_limit(1), 1);
+        assert_eq!(normalize_limit(50), 50);
+        assert_eq!(normalize_limit(100), 50);
+    }
+
+    #[test]
+    fn validate_search_query_rejects_empty() {
+        let err = validate_search_query("   ").unwrap_err();
+        assert!(matches!(err, CroLensError::InvalidParams(_)));
+    }
+
+    #[test]
+    fn validate_search_query_rejects_long() {
+        let q = "a".repeat(201);
+        let err = validate_search_query(&q).unwrap_err();
+        assert!(matches!(err, CroLensError::InvalidParams(_)));
+    }
+
+    #[test]
+    fn validate_search_query_trims() {
+        let q = validate_search_query("  VVS Router  ").expect("should trim");
+        assert_eq!(q, "VVS Router");
+    }
+
+    #[test]
+    fn build_like_pattern_escapes_wildcards() {
+        assert_eq!(build_like_pattern("a%_b"), "%a\\%\\_b%");
+    }
+
+    #[test]
+    fn args_deserialize_defaults() {
+        let json = serde_json::json!({ "query": "router" });
+        let args: SearchArgs = serde_json::from_value(json).expect("args should parse");
+        assert_eq!(args.limit, 20);
+    }
+
+    #[test]
+    fn args_deserialize_with_limit() {
+        let json = serde_json::json!({ "query": "router", "limit": 5 });
+        let args: SearchArgs = serde_json::from_value(json).expect("args should parse");
+        assert_eq!(args.limit, 5);
+    }
 }

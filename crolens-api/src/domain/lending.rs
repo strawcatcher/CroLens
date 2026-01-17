@@ -9,6 +9,19 @@ fn default_protocol() -> String {
     "tectonic".to_string()
 }
 
+fn classify_liquidation_risk(health_factor: Option<&str>) -> (&'static str, Option<&'static str>) {
+    match health_factor {
+        Some("∞") => ("low", None),
+        Some(v) => match v.parse::<f64>() {
+            Ok(hf) if hf < 1.1 => ("high", Some("Health factor is below 1.1")),
+            Ok(hf) if hf < 1.5 => ("medium", Some("Health factor is below 1.5")),
+            Ok(_) => ("low", None),
+            Err(_) => ("unknown", Some("Unable to parse health factor")),
+        },
+        None => ("unknown", Some("Health factor unavailable")),
+    }
+}
+
 #[derive(Debug, Deserialize)]
 struct LendingRatesArgs {
     #[serde(default)]
@@ -75,16 +88,7 @@ pub async fn get_liquidation_risk(services: &infra::Services, args: Value) -> Re
             .map(|v| v.to_string());
     }
 
-    let (risk_level, warning) = match health_factor.as_deref() {
-        Some("∞") => ("low", None),
-        Some(v) => match v.parse::<f64>() {
-            Ok(hf) if hf < 1.1 => ("high", Some("Health factor is below 1.1")),
-            Ok(hf) if hf < 1.5 => ("medium", Some("Health factor is below 1.5")),
-            Ok(_) => ("low", None),
-            Err(_) => ("unknown", Some("Unable to parse health factor")),
-        },
-        None => ("unknown", Some("Health factor unavailable")),
-    };
+    let (risk_level, warning) = classify_liquidation_risk(health_factor.as_deref());
 
     if input.simple_mode {
         let hf_display = health_factor.clone().unwrap_or_else(|| "unknown".to_string());
@@ -104,3 +108,59 @@ pub async fn get_liquidation_risk(services: &infra::Services, args: Value) -> Re
     }))
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_protocol_is_tectonic() {
+        assert_eq!(default_protocol(), "tectonic");
+    }
+
+    #[test]
+    fn classify_liquidation_risk_variants() {
+        assert_eq!(
+            classify_liquidation_risk(None),
+            ("unknown", Some("Health factor unavailable"))
+        );
+        assert_eq!(classify_liquidation_risk(Some("∞")), ("low", None));
+        assert_eq!(
+            classify_liquidation_risk(Some("1.09")),
+            ("high", Some("Health factor is below 1.1"))
+        );
+        assert_eq!(
+            classify_liquidation_risk(Some("1.49")),
+            ("medium", Some("Health factor is below 1.5"))
+        );
+        assert_eq!(classify_liquidation_risk(Some("2.0")), ("low", None));
+        assert_eq!(
+            classify_liquidation_risk(Some("abc")),
+            ("unknown", Some("Unable to parse health factor"))
+        );
+    }
+
+    #[test]
+    fn args_deserialize_defaults() {
+        let json = serde_json::json!({});
+        let args: LendingRatesArgs = serde_json::from_value(json).expect("args should parse");
+        assert!(args.asset.is_none());
+        assert!(!args.simple_mode);
+
+        let json = serde_json::json!({ "address": "0x1234567890123456789012345678901234567890" });
+        let args: LiquidationRiskArgs = serde_json::from_value(json).expect("args should parse");
+        assert_eq!(args.protocol, "tectonic");
+        assert!(!args.simple_mode);
+    }
+
+    #[test]
+    fn liquidation_args_deserialize_with_protocol() {
+        let json = serde_json::json!({
+            "address": "0x1234567890123456789012345678901234567890",
+            "protocol": "tectonic",
+            "simple_mode": true
+        });
+        let args: LiquidationRiskArgs = serde_json::from_value(json).expect("args should parse");
+        assert_eq!(args.protocol, "tectonic");
+        assert!(args.simple_mode);
+    }
+}

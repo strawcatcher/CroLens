@@ -13,6 +13,13 @@ struct ContractInfoArgs {
     simple_mode: bool,
 }
 
+fn code_size_from_hex(code_hex: &str) -> Option<usize> {
+    if !code_hex.starts_with("0x") {
+        return None;
+    }
+    Some(code_hex.len().saturating_sub(2) / 2)
+}
+
 pub async fn get_contract_info(services: &infra::Services, args: Value) -> Result<Value> {
     let input: ContractInfoArgs = serde_json::from_value(args)
         .map_err(|err| CroLensError::invalid_params(format!("Invalid input: {err}")))?;
@@ -59,9 +66,7 @@ pub async fn get_contract_info(services: &infra::Services, args: Value) -> Resul
             .await
         {
             if let Some(code_hex) = code.as_str() {
-                if code_hex.starts_with("0x") {
-                    code_size = Some(code_hex.len().saturating_sub(2) / 2);
-                }
+                code_size = code_size_from_hex(code_hex);
             }
         }
     }
@@ -86,3 +91,33 @@ pub async fn get_contract_info(services: &infra::Services, args: Value) -> Resul
     }))
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn code_size_from_hex_variants() {
+        assert_eq!(code_size_from_hex("0x"), Some(0));
+        assert_eq!(code_size_from_hex("0x00"), Some(1));
+        assert_eq!(code_size_from_hex("0x6000"), Some(2));
+        assert_eq!(code_size_from_hex("6000"), None);
+    }
+
+    #[test]
+    fn args_deserialize_defaults() {
+        let json = serde_json::json!({ "address": "0x1234567890123456789012345678901234567890" });
+        let args: ContractInfoArgs = serde_json::from_value(json).expect("args should parse");
+        assert_eq!(args.address, "0x1234567890123456789012345678901234567890");
+        assert!(!args.simple_mode);
+    }
+
+    #[test]
+    fn args_deserialize_simple_mode_true() {
+        let json = serde_json::json!({
+            "address": "0x1234567890123456789012345678901234567890",
+            "simple_mode": true
+        });
+        let args: ContractInfoArgs = serde_json::from_value(json).expect("args should parse");
+        assert!(args.simple_mode);
+    }
+}

@@ -49,11 +49,15 @@ pub async fn get_protocol_stats(services: &infra::Services, args: Value) -> Resu
     }))
 }
 
-async fn count_rows(db: &worker::D1Database, table: &str, protocol: Option<&str>) -> Result<i64> {
-    let sql = match protocol {
+fn build_count_rows_sql(table: &str, protocol: Option<&str>) -> String {
+    match protocol {
         Some(_) => format!("SELECT COUNT(*) AS cnt FROM {table} WHERE protocol_id = ?1"),
         None => format!("SELECT COUNT(*) AS cnt FROM {table}"),
-    };
+    }
+}
+
+async fn count_rows(db: &worker::D1Database, table: &str, protocol: Option<&str>) -> Result<i64> {
+    let sql = build_count_rows_sql(table, protocol);
 
     let statement = db.prepare(&sql);
     let statement = match protocol {
@@ -73,4 +77,37 @@ async fn count_rows(db: &worker::D1Database, table: &str, protocol: Option<&str>
         return Ok(0);
     };
     Ok(row.get("cnt").and_then(|v| v.as_i64()).unwrap_or(0))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn build_count_rows_sql_variants() {
+        assert_eq!(
+            build_count_rows_sql("dex_pools", None),
+            "SELECT COUNT(*) AS cnt FROM dex_pools"
+        );
+        assert_eq!(
+            build_count_rows_sql("dex_pools", Some("vvs")),
+            "SELECT COUNT(*) AS cnt FROM dex_pools WHERE protocol_id = ?1"
+        );
+    }
+
+    #[test]
+    fn args_deserialize_defaults() {
+        let json = serde_json::json!({});
+        let args: ProtocolStatsArgs = serde_json::from_value(json).expect("args should parse");
+        assert!(args.protocol.is_none());
+        assert!(!args.simple_mode);
+    }
+
+    #[test]
+    fn args_deserialize_with_protocol() {
+        let json = serde_json::json!({ "protocol": "vvs", "simple_mode": true });
+        let args: ProtocolStatsArgs = serde_json::from_value(json).expect("args should parse");
+        assert_eq!(args.protocol.as_deref(), Some("vvs"));
+        assert!(args.simple_mode);
+    }
 }

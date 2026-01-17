@@ -46,6 +46,17 @@ struct TectonicRatesArgs {
     simple_mode: bool,
 }
 
+fn normalize_asset_filter(asset: &Option<String>) -> Option<String> {
+    asset.as_ref().map(|s| s.trim().to_lowercase())
+}
+
+fn symbol_matches_asset_filter(symbol: &str, asset_filter: Option<&str>) -> bool {
+    match asset_filter {
+        Some(f) => symbol.trim().eq_ignore_ascii_case(f),
+        None => true,
+    }
+}
+
 pub async fn get_tectonic_rates(services: &infra::Services, args: Value) -> Result<Value> {
     let input: TectonicRatesArgs = serde_json::from_value(args)
         .map_err(|err| CroLensError::invalid_params(format!("Invalid input: {err}")))?;
@@ -53,16 +64,10 @@ pub async fn get_tectonic_rates(services: &infra::Services, args: Value) -> Resu
     let markets =
         infra::config::list_lending_markets_cached(&services.db, &services.kv, "tectonic").await?;
 
-    let asset_filter = input.asset.as_ref().map(|s| s.trim().to_lowercase());
+    let asset_filter = normalize_asset_filter(&input.asset);
     let out: Vec<Value> = markets
         .into_iter()
-        .filter(|m| {
-            if let Some(filter) = &asset_filter {
-                m.underlying_symbol.trim().to_lowercase() == *filter
-            } else {
-                true
-            }
-        })
+        .filter(|m| symbol_matches_asset_filter(&m.underlying_symbol, asset_filter.as_deref()))
         .map(|m| {
             serde_json::json!({
                 "underlying_symbol": m.underlying_symbol,
@@ -86,3 +91,48 @@ pub async fn get_tectonic_rates(services: &infra::Services, args: Value) -> Resu
     }))
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalize_asset_filter_trims_and_lowercases() {
+        assert_eq!(normalize_asset_filter(&None), None);
+        assert_eq!(
+            normalize_asset_filter(&Some(" USDC ".to_string())),
+            Some("usdc".to_string())
+        );
+        assert_eq!(
+            normalize_asset_filter(&Some("".to_string())),
+            Some("".to_string())
+        );
+    }
+
+    #[test]
+    fn symbol_matches_asset_filter_behaviour() {
+        assert!(symbol_matches_asset_filter("USDC", None));
+        assert!(symbol_matches_asset_filter("USDC", Some("usdc")));
+        assert!(symbol_matches_asset_filter(" usdc ", Some("USDC")));
+        assert!(!symbol_matches_asset_filter("CRO", Some("usdc")));
+    }
+
+    #[test]
+    fn args_deserialize_defaults() {
+        let json = serde_json::json!({});
+        let args: SimpleModeArgs = serde_json::from_value(json).expect("args should parse");
+        assert!(!args.simple_mode);
+
+        let json = serde_json::json!({});
+        let args: TectonicRatesArgs = serde_json::from_value(json).expect("args should parse");
+        assert!(args.asset.is_none());
+        assert!(!args.simple_mode);
+    }
+
+    #[test]
+    fn rates_args_deserialize_with_asset() {
+        let json = serde_json::json!({ "asset": "USDC", "simple_mode": true });
+        let args: TectonicRatesArgs = serde_json::from_value(json).expect("args should parse");
+        assert_eq!(args.asset.as_deref(), Some("USDC"));
+        assert!(args.simple_mode);
+    }
+}
