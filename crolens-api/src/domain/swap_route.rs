@@ -39,3 +39,53 @@ pub async fn get_best_swap_route(services: &infra::Services, args: Value) -> Res
     }))
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn args_deserialize_defaults() {
+        let json = serde_json::json!({
+            "token_in": "CRO",
+            "token_out": "USDC",
+            "amount_in": "1000000000000000000"
+        });
+        let args: BestSwapRouteArgs = serde_json::from_value(json).expect("should parse");
+        assert_eq!(args.token_in, "CRO");
+        assert_eq!(args.token_out, "USDC");
+        assert_eq!(args.amount_in, "1000000000000000000");
+        assert!(!args.simple_mode);
+    }
+
+    #[test]
+    fn args_deserialize_simple_mode_true() {
+        let json = serde_json::json!({
+            "token_in": "CRO",
+            "token_out": "USDC",
+            "amount_in": "1000000000000000000",
+            "simple_mode": true
+        });
+        let args: BestSwapRouteArgs = serde_json::from_value(json).expect("should parse");
+        assert!(args.simple_mode);
+    }
+
+    #[test]
+    fn args_rejects_missing_token_in() {
+        let json = serde_json::json!({
+            "token_out": "USDC",
+            "amount_in": "1000000000000000000"
+        });
+        let result: std::result::Result<BestSwapRouteArgs, _> = serde_json::from_value(json);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn args_rejects_missing_amount_in() {
+        let json = serde_json::json!({
+            "token_in": "CRO",
+            "token_out": "USDC"
+        });
+        let result: std::result::Result<BestSwapRouteArgs, _> = serde_json::from_value(json);
+        assert!(result.is_err());
+    }
+}

@@ -15,9 +15,15 @@ struct GetAccountSummaryArgs {
     simple_mode: bool,
 }
 
+fn validate_address(address: &str) -> Result<()> {
+    let _ = types::parse_address(address)?;
+    Ok(())
+}
+
 pub async fn get_account_summary(services: &infra::Services, args: Value) -> Result<Value> {
     let input: GetAccountSummaryArgs = serde_json::from_value(args)
         .map_err(|err| CroLensError::invalid_params(format!("Invalid input: {err}")))?;
+    validate_address(&input.address)?;
     let address = types::parse_address(&input.address)?;
 
     let tokens = infra::token::list_tokens_cached(&services.db, &services.kv).await?;
@@ -32,7 +38,7 @@ pub async fn get_account_summary(services: &infra::Services, args: Value) -> Res
 
     let results = services.multicall()?.aggregate(calls).await?;
 
-    // 批量获取所有代币价格（并行查询 KV）
+    // Batch fetch token prices (best-effort via KV).
     let price_map = infra::price::get_prices_usd_batch(services, &tokens).await?;
 
     let mut wallet = Vec::new();
@@ -124,4 +130,45 @@ pub async fn get_account_summary(services: &infra::Services, args: Value) -> Res
         },
         "meta": services.meta(),
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_address_accepts_valid() {
+        validate_address("0x5C7F8A570d578ED84E63fdFA7b1eE72dEae1AE23")
+            .expect("valid address should pass");
+    }
+
+    #[test]
+    fn validate_address_rejects_invalid() {
+        let err = validate_address("0x123").unwrap_err();
+        assert!(matches!(err, CroLensError::InvalidAddress(_)));
+    }
+
+    #[test]
+    fn args_deserialize_defaults() {
+        let json = serde_json::json!({ "address": "0x5C7F8A570d578ED84E63fdFA7b1eE72dEae1AE23" });
+        let args: GetAccountSummaryArgs = serde_json::from_value(json).expect("should parse");
+        assert!(!args.simple_mode);
+    }
+
+    #[test]
+    fn args_deserialize_simple_mode_true() {
+        let json = serde_json::json!({
+            "address": "0x5C7F8A570d578ED84E63fdFA7b1eE72dEae1AE23",
+            "simple_mode": true
+        });
+        let args: GetAccountSummaryArgs = serde_json::from_value(json).expect("should parse");
+        assert!(args.simple_mode);
+    }
+
+    #[test]
+    fn args_rejects_missing_address() {
+        let json = serde_json::json!({});
+        let result: std::result::Result<GetAccountSummaryArgs, _> = serde_json::from_value(json);
+        assert!(result.is_err());
+    }
 }
