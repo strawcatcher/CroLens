@@ -1,37 +1,160 @@
-# CroLens
+<div align="center">
 
-> **Making Cronos Readable for Machines** - Semantic data layer for AI Agents on Cronos blockchain.
+# ◆ CROLENS ◆
 
-CroLens transforms complex blockchain data into structured, AI-friendly responses. One API call returns semantic data that would otherwise require RPC calls + ABI decoding + context understanding + formatting.
+### 👁️ THE EYES OF AI AGENTS ON CRONOS
 
-## Features
+**Read-Only. No Private Keys. Zero Risk.**
 
-- **MCP Protocol Compatible** - JSON-RPC 2.0 interface for AI Agents and LLM applications
-- **Cronos Native** - Deep integration with VVS Finance and Tectonic Protocol
-- **Semantic Translation** - Raw blockchain data → human-readable summaries
-- **Transaction Builder** - Construct swap transactions with built-in simulation guard
-- **Edge Performance** - Rust + Cloudflare Workers for low-latency responses
+[![Cronos](https://img.shields.io/badge/Cronos-002D74?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48Y2lyY2xlIGN4PSIxNiIgY3k9IjE2IiByPSIxNiIgZmlsbD0id2hpdGUiLz48L3N2Zz4=&logoColor=white)](https://cronos.org/)
+[![Rust](https://img.shields.io/badge/Rust-000000?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![MCP](https://img.shields.io/badge/MCP_Protocol-FF6B35?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48Y2lyY2xlIGN4PSIxNiIgY3k9IjE2IiByPSIxNiIgZmlsbD0id2hpdGUiLz48L3N2Zz4=&logoColor=white)](https://modelcontextprotocol.io/)
+[![Cloudflare Workers](https://img.shields.io/badge/Cloudflare_Workers-F38020?style=for-the-badge&logo=cloudflare&logoColor=white)](https://workers.cloudflare.com/)
 
-## MCP Tools
+[![Live Demo](https://img.shields.io/badge/🔴_LIVE_DEMO-crolens--web.pages.dev-D90018?style=for-the-badge)](https://crolens-web.pages.dev)
+[![API Status](https://img.shields.io/badge/API-ONLINE-00FF41?style=for-the-badge)](https://crolens-api.crolens.workers.dev)
 
+<br/>
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                                                             │
+│   ██████╗██████╗  ██████╗ ██╗     ███████╗███╗   ██╗███████╗│
+│  ██╔════╝██╔══██╗██╔═══██╗██║     ██╔════╝████╗  ██║██╔════╝│
+│  ██║     ██████╔╝██║   ██║██║     █████╗  ██╔██╗ ██║███████╗│
+│  ██║     ██╔══██╗██║   ██║██║     ██╔══╝  ██║╚██╗██║╚════██║│
+│  ╚██████╗██║  ██║╚██████╔╝███████╗███████╗██║ ╚████║███████║│
+│   ╚═════╝╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚══════╝╚═╝  ╚═══╝╚══════╝│
+│                                                             │
+│          MAKING CRONOS READABLE FOR MACHINES                │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+</div>
+
+---
+
+## 🎯 What is CroLens?
+
+> **CroLens is the semantic data layer for AI Agents on Cronos blockchain.**
+
+AI Agents need to **see** blockchain data, not **control** wallets. CroLens provides **read-only** access to on-chain data through the MCP protocol - no private keys required, zero security risk.
+
+<table>
+<tr>
+<td width="50%">
+
+### ❌ Traditional Way
+```
+1. RPC Call (raw hex data)
+2. ABI Decoding (manual)
+3. Context Understanding (hard)
+4. Format Output (tedious)
+```
+
+</td>
+<td width="50%">
+
+### ✅ CroLens Way
+```json
+{
+  "method": "get_account_summary",
+  "params": { "address": "0x..." }
+}
+// → Semantic JSON response
+```
+
+</td>
+</tr>
+</table>
+
+---
+
+## 👁️ The "Eyes" Philosophy
+
+<div align="center">
+
+| 🔐 Traditional AI Wallet | 👁️ CroLens Approach |
+|:---:|:---:|
+| Needs private keys | **No keys required** |
+| Can execute transactions | **Read-only by design** |
+| Security risk | **Zero risk** |
+| Complex setup | **One API call** |
+
+</div>
+
+> 💡 **CroLens is to AI Agents what read-only database access is to applications.**
+>
+> Your AI can see everything, but can't touch anything.
+
+---
+
+## ⚡ 30 MCP Tools
+
+<div align="center">
+
+[![Tools](https://img.shields.io/badge/MCP_TOOLS-30-D90018?style=for-the-badge)]()
+[![VVS Finance](https://img.shields.io/badge/VVS_Finance-Integrated-7B3FE4?style=for-the-badge)]()
+[![Tectonic](https://img.shields.io/badge/Tectonic-Integrated-00D1FF?style=for-the-badge)]()
+
+</div>
+
+### 📊 Account & Assets
 | Tool | Description |
 |------|-------------|
-| `get_account_summary` | Complete account overview: wallet balances + DeFi positions |
-| `get_defi_positions` | Detailed DeFi positions (VVS LP, Tectonic supply/borrow) |
-| `get_token_info` | Query token metadata (name, symbol, decimals, total supply) |
-| `get_token_price` | Batch query token prices via VVS pools |
-| `get_pool_info` | Query VVS LP pool details and reserves |
-| `get_gas_price` | Get current gas price in gwei/CRO |
-| `get_block_info` | Get block details by number or 'latest' |
-| `get_approval_status` | Check ERC20 token allowance for spender |
-| `decode_transaction` | Translate transaction hash to human-readable action |
-| `simulate_transaction` | Simulate transaction execution with state changes |
-| `search_contract` | Search contracts by name, symbol, or address |
-| `construct_swap_tx` | Build swap calldata with approval handling |
+| `get_account_summary` | Complete wallet overview with DeFi positions |
+| `get_defi_positions` | VVS LP + Tectonic supply/borrow details |
+| `get_token_info` | Token metadata, price, liquidity |
+| `get_token_price` | Batch price query (up to 20 tokens) |
+| `get_portfolio_analysis` | Holdings analysis & diversification score |
 
-## Quick Start
+### 🔄 DeFi Protocol Tools
+| Tool | Description |
+|------|-------------|
+| `get_pool_info` | VVS LP pool details and reserves |
+| `get_vvs_farms` | All VVS farms with TVL & APY |
+| `get_vvs_rewards` | Pending VVS rewards per farm |
+| `get_tectonic_markets` | All lending markets overview |
+| `get_tectonic_rates` | Supply/borrow APY comparison |
+| `get_lending_rates` | Cross-protocol rate comparison |
+| `get_best_swap_route` | Optimal swap path across DEXs |
 
-### MCP Client Integration
+### 🔍 Transaction Intelligence
+| Tool | Description |
+|------|-------------|
+| `decode_transaction` | Human-readable transaction summary |
+| `decode_calldata` | Method signature + parameter parsing |
+| `simulate_transaction` | Preview state changes + risk warnings |
+| `estimate_gas` | Precise gas estimation in CRO/USD |
+
+### 🛡️ Security & Monitoring
+| Tool | Description |
+|------|-------------|
+| `get_approval_status` | Token allowances with risk scoring |
+| `get_token_approvals` | Complete approval list per address |
+| `get_liquidation_risk` | Health factor & liquidation threshold |
+| `get_health_alerts` | Comprehensive risk warnings |
+| `get_whale_activity` | Large transfer monitoring |
+| `construct_revoke_approval` | Build revoke transaction data |
+
+### 🌐 Network & Contracts
+| Tool | Description |
+|------|-------------|
+| `get_gas_price` | Current gas + operation cost estimates |
+| `get_block_info` | Block details by number or 'latest' |
+| `get_cro_overview` | CRO price, market cap, network status |
+| `get_protocol_stats` | Protocol TVL summaries |
+| `search_contract` | Search by name, symbol, or address |
+| `get_contract_info` | Contract type & code details |
+| `resolve_cronos_id` | .cro domain ↔ address resolution |
+| `construct_swap_tx` | Build swap calldata (approval-aware) |
+
+---
+
+## 🚀 Quick Start
+
+### For MCP Clients (Claude, etc.)
 
 Add to your MCP client configuration:
 
@@ -62,110 +185,121 @@ curl -X POST https://crolens-api.crolens.workers.dev \
     "params": {
       "name": "get_account_summary",
       "arguments": {
-        "address": "0x5C7F8A570d578ED84E63fdFA7b1eE72dEae1AE23",
-        "simple_mode": true
+        "address": "0x5C7F8A570d578ED84E63fdFA7b1eE72dEae1AE23"
       }
     }
   }'
 ```
 
-## Project Structure
+---
+
+## 🏗️ Architecture
+
+<div align="center">
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│                         USER LAYER                                    │
+├────────────┬────────────┬────────────┬──────────────────────────────┤
+│ MCP Client │  AI Agent  │  Web UI    │  Direct API                  │
+│            │  (Custom)  │ (Playground)│  (curl/SDK)                 │
+└─────┬──────┴─────┬──────┴─────┬──────┴──────────┬────────────────────┘
+      │            │            │                 │
+      └────────────┴────────────┴─────────────────┘
+                          │
+                 JSON-RPC 2.0 (HTTP)
+                          │
+                          ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│                    CROLENS API (Cloudflare Workers)                  │
+├──────────────────────────────────────────────────────────────────────┤
+│  🔐 Gateway: Auth (API Key) + Rate Limit + x402 Payment             │
+├──────────────────────────────────────────────────────────────────────┤
+│  📡 MCP Layer: tools/list + tools/call                              │
+├──────────────────────────────────────────────────────────────────────┤
+│  🧠 Domain: 30 Semantic Tools                                        │
+├──────────────────────────────────────────────────────────────────────┤
+│  🔌 Adapters: VVS (UniswapV2) + Tectonic (CompoundV2)               │
+├──────────────────────────────────────────────────────────────────────┤
+│  ⚙️ Infra: RPC + Multicall3 + KV Cache + D1 Database                │
+└──────────────────────────────────────────────────────────────────────┘
+                          │
+                          ▼
+                   ┌──────────────┐
+                   │ CRONOS CHAIN │
+                   └──────────────┘
+```
+
+</div>
+
+---
+
+## 🛠️ Tech Stack
+
+<div align="center">
+
+| Layer | Technology |
+|:-----:|:----------:|
+| **Backend** | ![Rust](https://img.shields.io/badge/Rust-000000?style=flat-square&logo=rust&logoColor=white) ![Cloudflare](https://img.shields.io/badge/Workers-F38020?style=flat-square&logo=cloudflare&logoColor=white) ![alloy](https://img.shields.io/badge/alloy--rs-3C3C3D?style=flat-square) |
+| **Frontend** | ![React](https://img.shields.io/badge/React-61DAFB?style=flat-square&logo=react&logoColor=black) ![Vite](https://img.shields.io/badge/Vite-646CFF?style=flat-square&logo=vite&logoColor=white) ![TailwindCSS](https://img.shields.io/badge/Tailwind-06B6D4?style=flat-square&logo=tailwindcss&logoColor=white) |
+| **Storage** | ![Cloudflare KV](https://img.shields.io/badge/KV-F38020?style=flat-square&logo=cloudflare&logoColor=white) ![D1](https://img.shields.io/badge/D1-F38020?style=flat-square&logo=cloudflare&logoColor=white) |
+| **Web3** | ![RainbowKit](https://img.shields.io/badge/RainbowKit-7B3FE4?style=flat-square) ![wagmi](https://img.shields.io/badge/wagmi-1C1C1C?style=flat-square) |
+
+</div>
+
+---
+
+## 📁 Project Structure
 
 ```
 crolens/
-├── crolens-api/          # Rust backend (Cloudflare Worker)
+├── crolens-api/              # Rust backend (Cloudflare Worker)
 │   ├── src/
-│   │   ├── lib.rs        # Entry point + Cron handler
-│   │   ├── error.rs      # Unified error types
-│   │   ├── gateway/      # Auth + x402 payment
-│   │   ├── mcp/          # MCP protocol (router, tools)
-│   │   ├── domain/       # Business logic (assets, defi, simulation)
-│   │   ├── adapters/     # Protocol adapters (uniswap_v2, compound_v2)
-│   │   └── infra/        # Infrastructure (rpc, multicall, price)
-│   ├── db/
-│   │   ├── schema.sql    # D1 database schema
-│   │   └── seed.sql      # Initial data
-│   └── wrangler.toml     # Cloudflare config
+│   │   ├── lib.rs            # Entry + Cron handler
+│   │   ├── gateway/          # Auth + x402 payment
+│   │   ├── mcp/              # MCP protocol (router, tools)
+│   │   ├── domain/           # 30 tool implementations
+│   │   ├── adapters/         # VVS + Tectonic adapters
+│   │   └── infra/            # RPC, multicall, cache
+│   └── wrangler.toml
 │
-└── crolens-web/          # React frontend
+└── crolens-web/              # React frontend
     └── src/
-        ├── components/   # UI components (shadcn/ui)
-        ├── features/     # Playground, Dashboard, Console
-        ├── lib/          # API client, wagmi config
-        └── stores/       # Zustand stores
+        ├── features/         # Playground, Dashboard, Console
+        ├── components/       # P5-style UI components
+        └── lib/              # API client, wagmi config
 ```
 
-## Tech Stack
+---
 
-| Layer | Technology |
-|-------|------------|
-| Backend | Rust + Cloudflare Workers + alloy-rs |
-| Frontend | React + Vite + shadcn/ui + Tailwind |
-| Storage | Cloudflare KV (cache) + D1 (database) |
-| Web3 | RainbowKit + Wagmi |
-| RPC | BlockPi (query) + Tenderly (simulation) |
+## 🎮 Live Demo
 
-## Development
+<div align="center">
 
-### Prerequisites
+| Page | Description | Link |
+|:----:|:-----------:|:----:|
+| **Playground** | Interactive tool testing | [![Playground](https://img.shields.io/badge/TRY-Playground-D90018?style=for-the-badge)](https://crolens-web.pages.dev/playground) |
+| **Dashboard** | Real-time monitoring | [![Dashboard](https://img.shields.io/badge/VIEW-Dashboard-333?style=for-the-badge)](https://crolens-web.pages.dev/dashboard) |
+| **Console** | API key management | [![Console](https://img.shields.io/badge/MANAGE-Console-333?style=for-the-badge)](https://crolens-web.pages.dev/console) |
 
-- Rust 1.75+ with `wasm32-unknown-unknown` target
-- Node.js 18+
-- Wrangler CLI (`npm install -g wrangler`)
-- Cloudflare account
+</div>
 
-### Backend Setup
+---
 
-```bash
-cd crolens-api
-npm install
+## 📊 Performance
 
-# Local env vars (recommended for wrangler --local)
-cp .dev.vars.example .dev.vars
+| Tool | Latency | Description |
+|------|:-------:|-------------|
+| `search_contract` | ~50ms | D1 query only |
+| `simulate_transaction` | ~270ms | Single RPC |
+| `get_defi_positions` | ~290ms | Batch RPC |
+| `decode_transaction` | ~450ms | 2x RPC |
+| `get_account_summary` | ~550ms | Multi RPC + pricing |
+| `construct_swap_tx` | ~900ms | Multi RPC + simulation |
 
-# Configure secrets (for remote deploy)
-wrangler secret put BLOCKPI_RPC_URL
-wrangler secret put TENDERLY_ACCESS_KEY
-wrangler secret put TENDERLY_ACCOUNT
-wrangler secret put TENDERLY_PROJECT
+---
 
-# Initialize database
-wrangler d1 execute crolens-db --local --file=./db/schema.sql
-wrangler d1 execute crolens-db --local --file=./db/seed.sql
-
-# Run locally
-wrangler dev --local --persist-to .wrangler/state
-```
-
-### Frontend Setup
-
-```bash
-cd crolens-web
-npm install
-npm run dev
-```
-
-### Deployment
-
-```bash
-# Deploy backend
-cd crolens-api
-wrangler deploy
-
-# Deploy frontend
-cd crolens-web
-npm run build
-# Deploy to your preferred hosting (Cloudflare Pages, Vercel, etc.)
-```
-
-## Supported Protocols
-
-| Protocol | Type | Adapter |
-|----------|------|---------|
-| VVS Finance | DEX (Uniswap V2 fork) | `UniswapV2Adapter` |
-| Tectonic | Lending (Compound V2 fork) | `CompoundV2Adapter` |
-
-## Contract Addresses (Cronos Mainnet)
+## 🔗 Contract Addresses (Cronos Mainnet)
 
 | Contract | Address |
 |----------|---------|
@@ -176,34 +310,46 @@ npm run build
 | VVS Factory | `0x3B44B2a187a7b3824131F8db5a74194D0a42Fc15` |
 | TectonicCore | `0x7De56Bd8b37827c51835e162c867848fE2403a48` |
 
-## Contributing
+---
 
-### Code Style
+## 🧑‍💻 Development
 
-- **Language**: All code, comments, and commits MUST be in English
-- **Rust**: Follow standard Rust conventions (`cargo fmt`, `cargo clippy`)
-- **TypeScript**: ESLint + Prettier
-- **Commits**: Use [Conventional Commits](https://www.conventionalcommits.org/)
-  - `feat:` new feature
-  - `fix:` bug fix
-  - `docs:` documentation
-  - `refactor:` code refactoring
-  - `test:` adding tests
-  - `chore:` maintenance
+### Prerequisites
 
-### Commit Message Examples
+- Rust 1.75+ with `wasm32-unknown-unknown` target
+- Node.js 18+
+- Wrangler CLI
 
-```
-feat(mcp): add get_account_summary tool
-fix(rpc): handle timeout in multicall aggregation
-docs: update API usage examples
-refactor(adapters): extract common UniswapV2 logic
+### Backend
+
+```bash
+cd crolens-api
+cp .dev.vars.example .dev.vars
+wrangler d1 execute crolens-db --local --file=./db/schema.sql
+wrangler d1 execute crolens-db --local --file=./db/seed.sql
+wrangler dev --local --persist-to .wrangler/state
 ```
 
-## License
+### Frontend
+
+```bash
+cd crolens-web
+npm install
+npm run dev
+```
+
+---
+
+## 📝 License
 
 MIT
 
-## Acknowledgments
+---
 
-Built for [Cronos Hackathon 2025](https://cronos.org/)
+<div align="center">
+
+**Built with ❤️ for [Cronos Hackathon 2025](https://cronos.org/)**
+
+[![GitHub](https://img.shields.io/badge/GitHub-strawcatcher/CroLens-181717?style=for-the-badge&logo=github)](https://github.com/strawcatcher/CroLens)
+
+</div>
