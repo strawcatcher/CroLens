@@ -10,7 +10,12 @@ export type ToolName =
   | "get_gas_price"
   | "get_token_price"
   | "get_approval_status"
-  | "get_block_info";
+  | "get_block_info"
+  | "get_vvs_farms"
+  | "get_tectonic_markets"
+  | "get_cro_overview"
+  | "get_protocol_stats"
+  | "get_health_alerts";
 
 export type JsonRpcId = number | string | null;
 

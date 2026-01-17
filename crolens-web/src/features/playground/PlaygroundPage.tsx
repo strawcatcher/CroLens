@@ -55,7 +55,8 @@ type ToolResult =
   | TokenPriceResult
   | ApprovalStatusResult
   | BlockInfoResult
-  | { text: string; meta: Meta };
+  | { text: string; meta: Meta }
+  | Record<string, unknown>;
 
 const TOOL_OPTIONS: Array<{
   value: ToolName;
@@ -121,6 +122,31 @@ const TOOL_OPTIONS: Array<{
     value: "get_block_info",
     label: "GET_BLOCK_INFO",
     description: "Block details & gas usage",
+  },
+  {
+    value: "get_vvs_farms",
+    label: "GET_VVS_FARMS",
+    description: "List VVS farms (placeholder)",
+  },
+  {
+    value: "get_tectonic_markets",
+    label: "GET_TECTONIC_MARKETS",
+    description: "List Tectonic markets",
+  },
+  {
+    value: "get_cro_overview",
+    label: "GET_CRO_OVERVIEW",
+    description: "CRO price & network overview",
+  },
+  {
+    value: "get_protocol_stats",
+    label: "GET_PROTOCOL_STATS",
+    description: "Protocol stats (pools/markets)",
+  },
+  {
+    value: "get_health_alerts",
+    label: "GET_HEALTH_ALERTS",
+    description: "Aggregated wallet health alerts",
   },
 ];
 
@@ -238,14 +264,20 @@ export function PlaygroundPage() {
     tool === "get_gas_price" ||
     tool === "get_token_price" ||
     tool === "get_approval_status" ||
-    tool === "get_block_info";
+    tool === "get_block_info" ||
+    tool === "get_vvs_farms" ||
+    tool === "get_tectonic_markets" ||
+    tool === "get_cro_overview" ||
+    tool === "get_protocol_stats" ||
+    tool === "get_health_alerts";
 
   const needsAddress =
     tool === "get_account_summary" ||
     tool === "get_defi_positions" ||
     tool === "get_approval_status" ||
     tool === "simulate_transaction" ||
-    tool === "construct_swap_tx";
+    tool === "construct_swap_tx" ||
+    tool === "get_health_alerts";
 
   const toolHelp =
     TOOL_OPTIONS.find((t) => t.value === tool)?.description ?? "";
@@ -378,6 +410,13 @@ export function PlaygroundPage() {
               block: blockQuery.trim() || "latest",
               simple_mode: simpleMode,
             };
+          case "get_vvs_farms":
+          case "get_tectonic_markets":
+          case "get_cro_overview":
+          case "get_protocol_stats":
+            return { simple_mode: simpleMode };
+          case "get_health_alerts":
+            return { address, simple_mode: simpleMode };
         }
       })();
 
@@ -449,7 +488,7 @@ export function PlaygroundPage() {
       </P5Title>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-        {/* 工具列表 */}
+        {/* Tools list */}
         <div className="lg:col-span-3">
           <P5Card title="TOOLS" className="h-[400px] lg:h-full">
             <ToolSelector
@@ -463,17 +502,17 @@ export function PlaygroundPage() {
           </P5Card>
         </div>
 
-        {/* 主输入区 */}
+        {/* Main input panel */}
         <div className="lg:col-span-5 flex flex-col gap-6">
           <P5Card title="INPUT PARAMETERS" className="flex-1">
             <div className="space-y-4" aria-busy={loading}>
-              {/* 选中工具提示 */}
+              {/* Selected tool hint */}
               <div className="bg-[#00C853]/10 border border-[#00C853]/30 p-3 text-xs font-mono text-[#00C853] flex items-start gap-2">
                 <LayoutDashboard size={14} className="mt-0.5" />
                 <span>SELECTED: {TOOL_OPTIONS.find(t => t.value === tool)?.label}</span>
               </div>
 
-              {/* 移动端工具选择器 */}
+              {/* Mobile tool selector */}
               <div className="md:hidden">
                 <Select
                   value={tool}
@@ -830,7 +869,7 @@ export function PlaygroundPage() {
           </P5Card>
         </div>
 
-        {/* 输出结果 */}
+        {/* Output */}
         <div className="lg:col-span-4">
           <P5Card
             title="OUTPUT JSON"
@@ -957,9 +996,12 @@ function FormattedResult({
   }
 
   return (
-    <div className="bg-black/50 border border-[#333] p-4 text-sm text-[#A3A3A3]">
-      Unsupported result shape.
-    </div>
+    <CodeBlock
+      code={JSON.stringify(result, null, 2)}
+      language="json"
+      showLineNumbers={false}
+      aria-label="Unsupported tool result"
+    />
   );
 }
 
