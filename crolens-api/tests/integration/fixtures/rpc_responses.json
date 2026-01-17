@@ -1,5 +1,26 @@
 {
+  "eth_call": {
+    "__default": {
+      "result": "0x00000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000"
+    }
+  },
   "eth_blockNumber": { "result": "0x1234567" },
+  "eth_getBlockByNumber": {
+    "__default": {
+      "result": {
+        "number": "0xe4e1c0",
+        "hash": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "timestamp": "0x65a00000",
+        "transactions": [],
+        "gasUsed": "0x7a1200",
+        "gasLimit": "0x1c9c380",
+        "baseFeePerGas": "0x48c27395000",
+        "miner": "0x0000000000000000000000000000000000000000"
+      }
+    }
+  },
+  "eth_gasPrice": { "result": "0x48c27395000" },
+  "eth_estimateGas": { "result": "0x5208" },
   "eth_getTransactionByHash": {
     "__default": { "result": null },
     "0x1111111111111111111111111111111111111111111111111111111111111111": {

@@ -2,8 +2,7 @@
 
 DELETE FROM payments;
 DELETE FROM api_keys;
--- Keep tokens empty so get_account_summary can run in integration tests without mocking eth_call/multicall.
-DELETE FROM tokens;
+-- Keep the tokens seeded from db/seed.sql so integration tests can cover token/pool tools.
 
 INSERT INTO api_keys (api_key, tier, credits, daily_used) VALUES
   ('cl_sk_test_free_001', 'free', 100, 0),
