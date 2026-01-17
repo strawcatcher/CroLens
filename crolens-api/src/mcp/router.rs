@@ -5,7 +5,7 @@ use crate::domain;
 use crate::error::CroLensError;
 use crate::gateway;
 use crate::infra;
-use crate::infra::structured_log::{LogEntry, LogLevel, RequestContext};
+use crate::infra::structured_log::RequestContext;
 use crate::mcp::protocol::{JsonRpcRequest, JsonRpcResponse, ToolCallParams};
 use crate::types;
 
@@ -69,7 +69,7 @@ async fn handle_tools_call(
 
     let tool_name = params.name.clone();
     let outcome: std::result::Result<Value, CroLensError> = async {
-        // 延迟加载 X402 配置，只在需要返回支付错误时才加载
+        // Lazily load X402 config only when we need to return a payment error.
         let lazy_payment_data = || async {
             match infra::x402::X402Config::try_load(env, &db).await {
                 Ok(Some(cfg)) => Some(serde_json::json!({
@@ -100,7 +100,7 @@ async fn handle_tools_call(
         if record.credits <= 0 {
             return Err(CroLensError::payment_required(lazy_payment_data().await));
         }
-        // Free 用户可以使用所有工具，后续再加限制
+        // Free tier can access all tools; access restrictions can be added later if needed.
         gateway::deduct_credit(&db, &record.api_key).await?;
 
         let services = infra::Services::new(env, trace_id, start_ms)?;
@@ -134,6 +134,54 @@ async fn handle_tools_call(
                 domain::approval::get_approval_status(&services, params.arguments).await
             }
             "get_block_info" => domain::block::get_block_info(&services, params.arguments).await,
+            // Phase 1
+            "estimate_gas" => {
+                domain::gas_estimate::estimate_gas(&services, params.arguments).await
+            }
+            "decode_calldata" => domain::calldata::decode_calldata(&services, params.arguments).await,
+            "get_vvs_farms" => domain::vvs::get_vvs_farms(&services, params.arguments).await,
+            "get_vvs_rewards" => domain::vvs::get_vvs_rewards(&services, params.arguments).await,
+            "get_tectonic_markets" => {
+                domain::tectonic::get_tectonic_markets(&services, params.arguments).await
+            }
+            "get_tectonic_rates" => {
+                domain::tectonic::get_tectonic_rates(&services, params.arguments).await
+            }
+            "construct_revoke_approval" => {
+                domain::revoke_approval::construct_revoke_approval(&services, params.arguments).await
+            }
+            "get_lending_rates" => {
+                domain::lending::get_lending_rates(&services, params.arguments).await
+            }
+            // Phase 2
+            "get_cro_overview" => domain::cro::get_cro_overview(&services, params.arguments).await,
+            "get_liquidation_risk" => {
+                domain::lending::get_liquidation_risk(&services, params.arguments).await
+            }
+            "get_health_alerts" => {
+                domain::health::get_health_alerts(&services, params.arguments).await
+            }
+            "get_best_swap_route" => {
+                domain::swap_route::get_best_swap_route(&services, params.arguments).await
+            }
+            "get_protocol_stats" => {
+                domain::protocol_stats::get_protocol_stats(&services, params.arguments).await
+            }
+            "resolve_cronos_id" => {
+                domain::cronos_id::resolve_cronos_id(&services, params.arguments).await
+            }
+            "get_token_approvals" => {
+                domain::token_approvals::get_token_approvals(&services, params.arguments).await
+            }
+            "get_contract_info" => {
+                domain::contract_info::get_contract_info(&services, params.arguments).await
+            }
+            "get_whale_activity" => {
+                domain::whale_activity::get_whale_activity(&services, params.arguments).await
+            }
+            "get_portfolio_analysis" => {
+                domain::portfolio::get_portfolio_analysis(&services, params.arguments).await
+            }
             _ => Err(CroLensError::method_not_found(format!(
                 "Unknown tool: {tool_name}"
             ))),

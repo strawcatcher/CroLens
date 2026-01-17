@@ -13,7 +13,7 @@ fn tools_list_has_all_required_tools() {
         .filter_map(|t| t.get("name").and_then(|v| v.as_str()))
         .collect::<Vec<_>>();
 
-    // All 12 MCP tools
+    // All 30 MCP tools (SOP v2.0.0)
     for required in [
         "get_account_summary",
         "get_defi_positions",
@@ -27,6 +27,24 @@ fn tools_list_has_all_required_tools() {
         "get_token_price",
         "get_approval_status",
         "get_block_info",
+        "estimate_gas",
+        "decode_calldata",
+        "get_vvs_farms",
+        "get_vvs_rewards",
+        "get_tectonic_markets",
+        "get_tectonic_rates",
+        "construct_revoke_approval",
+        "get_lending_rates",
+        "get_cro_overview",
+        "get_liquidation_risk",
+        "get_health_alerts",
+        "get_best_swap_route",
+        "get_protocol_stats",
+        "resolve_cronos_id",
+        "get_token_approvals",
+        "get_contract_info",
+        "get_whale_activity",
+        "get_portfolio_analysis",
     ] {
         assert!(names.contains(&required), "missing tool: {required}");
     }
@@ -40,7 +58,7 @@ fn tools_list_has_correct_count() {
         .and_then(|v| v.as_array())
         .expect("tools must be an array");
 
-    assert_eq!(tools.len(), 12, "expected 12 MCP tools");
+    assert_eq!(tools.len(), 30, "expected 30 MCP tools");
 }
 
 #[test]

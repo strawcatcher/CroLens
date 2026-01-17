@@ -67,6 +67,7 @@ fn tool_definitions() -> Vec<ToolDefinition> {
                     "to": { "type": "string" },
                     "data": { "type": "string" },
                     "value": { "type": "string" },
+                    "gas": { "type": "integer" },
                     "simple_mode": { "type": "boolean" }
                 },
                 "required": ["from", "to", "data", "value"]
@@ -182,6 +183,229 @@ fn tool_definitions() -> Vec<ToolDefinition> {
                 "required": []
             }),
         },
+        ToolDefinition {
+            name: "estimate_gas".to_string(),
+            description: "Estimate gas for a transaction and show the cost in CRO/USD.".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "from": { "type": "string" },
+                    "to": { "type": "string" },
+                    "data": { "type": "string" },
+                    "value": { "type": "string" },
+                    "simple_mode": { "type": "boolean" }
+                },
+                "required": ["from", "to"]
+            }),
+        },
+        ToolDefinition {
+            name: "decode_calldata".to_string(),
+            description: "Decode calldata into method signature and parameters.".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "data": { "type": "string" },
+                    "simple_mode": { "type": "boolean" }
+                },
+                "required": ["data"]
+            }),
+        },
+        ToolDefinition {
+            name: "get_vvs_farms".to_string(),
+            description: "List VVS farms with estimated TVL and APY.".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "simple_mode": { "type": "boolean" }
+                },
+                "required": []
+            }),
+        },
+        ToolDefinition {
+            name: "get_vvs_rewards".to_string(),
+            description: "Get pending VVS rewards for a wallet.".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "address": { "type": "string" },
+                    "simple_mode": { "type": "boolean" }
+                },
+                "required": ["address"]
+            }),
+        },
+        ToolDefinition {
+            name: "get_tectonic_markets".to_string(),
+            description: "List Tectonic lending markets overview.".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "simple_mode": { "type": "boolean" }
+                },
+                "required": []
+            }),
+        },
+        ToolDefinition {
+            name: "get_tectonic_rates".to_string(),
+            description: "Compare Tectonic supply/borrow rates (optionally filter by asset).".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "asset": { "type": "string" },
+                    "simple_mode": { "type": "boolean" }
+                },
+                "required": []
+            }),
+        },
+        ToolDefinition {
+            name: "construct_revoke_approval".to_string(),
+            description: "Construct calldata to revoke a token approval for a spender.".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "token": { "type": "string" },
+                    "spender": { "type": "string" },
+                    "simple_mode": { "type": "boolean" }
+                },
+                "required": ["token", "spender"]
+            }),
+        },
+        ToolDefinition {
+            name: "get_lending_rates".to_string(),
+            description: "Get lending rates across supported protocols (currently: Tectonic).".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "asset": { "type": "string" },
+                    "simple_mode": { "type": "boolean" }
+                },
+                "required": []
+            }),
+        },
+        ToolDefinition {
+            name: "get_cro_overview".to_string(),
+            description: "Get CRO overview: price, gas, and network status.".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "simple_mode": { "type": "boolean" }
+                },
+                "required": []
+            }),
+        },
+        ToolDefinition {
+            name: "get_liquidation_risk".to_string(),
+            description: "Assess liquidation risk for a wallet's lending positions.".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "address": { "type": "string" },
+                    "protocol": { "type": "string" },
+                    "simple_mode": { "type": "boolean" }
+                },
+                "required": ["address"]
+            }),
+        },
+        ToolDefinition {
+            name: "get_health_alerts".to_string(),
+            description: "Aggregate health alerts for balances, approvals, and DeFi positions.".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "address": { "type": "string" },
+                    "simple_mode": { "type": "boolean" }
+                },
+                "required": ["address"]
+            }),
+        },
+        ToolDefinition {
+            name: "get_best_swap_route".to_string(),
+            description: "Find the best swap route for a given trade.".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "token_in": { "type": "string" },
+                    "token_out": { "type": "string" },
+                    "amount_in": { "type": "string" },
+                    "simple_mode": { "type": "boolean" }
+                },
+                "required": ["token_in", "token_out", "amount_in"]
+            }),
+        },
+        ToolDefinition {
+            name: "get_protocol_stats".to_string(),
+            description: "Get protocol stats such as TVL for VVS and Tectonic.".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "protocol": { "type": "string" },
+                    "simple_mode": { "type": "boolean" }
+                },
+                "required": []
+            }),
+        },
+        ToolDefinition {
+            name: "resolve_cronos_id".to_string(),
+            description: "Resolve .cro domains to addresses (and reverse lookup).".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "query": { "type": "string" },
+                    "simple_mode": { "type": "boolean" }
+                },
+                "required": ["query"]
+            }),
+        },
+        ToolDefinition {
+            name: "get_token_approvals".to_string(),
+            description: "List token approvals across known spenders.".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "address": { "type": "string" },
+                    "include_zero": { "type": "boolean" },
+                    "simple_mode": { "type": "boolean" }
+                },
+                "required": ["address"]
+            }),
+        },
+        ToolDefinition {
+            name: "get_contract_info".to_string(),
+            description: "Get contract information including type and code size.".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "address": { "type": "string" },
+                    "simple_mode": { "type": "boolean" }
+                },
+                "required": ["address"]
+            }),
+        },
+        ToolDefinition {
+            name: "get_whale_activity".to_string(),
+            description: "Monitor large transfer activity for major tokens.".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "token": { "type": "string" },
+                    "min_value_usd": { "type": "number" },
+                    "blocks": { "type": "integer" },
+                    "simple_mode": { "type": "boolean" }
+                },
+                "required": []
+            }),
+        },
+        ToolDefinition {
+            name: "get_portfolio_analysis".to_string(),
+            description: "Analyze a wallet portfolio and provide diversification insights.".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "address": { "type": "string" },
+                    "simple_mode": { "type": "boolean" }
+                },
+                "required": ["address"]
+            }),
+        },
     ]
 }
 
@@ -196,7 +420,7 @@ mod tests {
             .get("tools")
             .and_then(|v| v.as_array())
             .expect("tools must be an array");
-        assert_eq!(tools.len(), 12); // 6 original + 6 new
+        assert_eq!(tools.len(), 30);
         for tool in tools {
             assert!(tool.get("name").and_then(|v| v.as_str()).is_some());
             assert!(tool.get("description").and_then(|v| v.as_str()).is_some());
@@ -230,6 +454,24 @@ mod tests {
             "get_token_price",
             "get_approval_status",
             "get_block_info",
+            "estimate_gas",
+            "decode_calldata",
+            "get_vvs_farms",
+            "get_vvs_rewards",
+            "get_tectonic_markets",
+            "get_tectonic_rates",
+            "construct_revoke_approval",
+            "get_lending_rates",
+            "get_cro_overview",
+            "get_liquidation_risk",
+            "get_health_alerts",
+            "get_best_swap_route",
+            "get_protocol_stats",
+            "resolve_cronos_id",
+            "get_token_approvals",
+            "get_contract_info",
+            "get_whale_activity",
+            "get_portfolio_analysis",
         ] {
             assert!(names.contains(&required));
         }

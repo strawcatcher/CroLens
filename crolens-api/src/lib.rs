@@ -83,7 +83,7 @@ async fn handle_price_sync(env: &Env) -> worker::Result<Response> {
         }
     }
 
-    // 检查 anchor 价格是否已写入
+    // Check whether anchor prices were written to KV.
     if let Ok(kv) = env.kv("KV") {
         if let Ok(Some(v)) = kv.get("price:anchor:cro").text().await {
             messages.push(format!("CRO price in KV: {v}"));
@@ -102,7 +102,7 @@ async fn handle_price_sync(env: &Env) -> worker::Result<Response> {
         }
     }
 
-    // 检查聚合缓存
+    // Check the aggregated price cache.
     if let Ok(kv) = env.kv("KV") {
         if let Ok(Some(v)) = kv.get("cache:prices:all").text().await {
             messages.push(format!("Price cache: {} bytes", v.len()));
@@ -137,7 +137,7 @@ async fn handle_json_rpc(mut req: Request, env: &Env, trace_id: &str) -> worker:
     let api_key = types::get_header(&req, "x-api-key");
     let client_ip = types::get_client_ip(&req);
 
-    // 先解析请求体，这样可以判断是否需要 rate limit
+    // Parse the request body first so we can decide whether to apply rate limiting.
     let body_bytes = match req.bytes().await {
         Ok(bytes) => bytes,
         Err(err) => {
@@ -174,9 +174,9 @@ async fn handle_json_rpc(mut req: Request, env: &Env, trace_id: &str) -> worker:
         req.path()
     );
 
-    // 对于只读的元数据请求，跳过 IP rate limit 以减少 KV 延迟
-    // tools/call 内部有自己的 API key rate limit
-    let needs_ip_rate_limit = json_rpc_req.method == "tools/call";
+    // Apply a per-IP JSON-RPC rate limit for tools/list and tools/call.
+    // tools/call also has its own per-api-key rate limit inside the MCP router.
+    let needs_ip_rate_limit = matches!(json_rpc_req.method.as_str(), "tools/list" | "tools/call");
 
     if needs_ip_rate_limit {
         if let Ok(kv) = env.kv("KV") {
@@ -313,7 +313,7 @@ async fn run_price_sync(env: &Env) {
         match infra::price::update_anchor_prices(env).await {
             Ok(_) => {
                 console_log!("[INFO] Anchor price sync succeeded on retry {}", attempt);
-                // anchor 价格更新成功后，立即更新 derived 价格
+                // After anchor prices update successfully, refresh derived prices immediately.
                 match infra::price::update_derived_prices(env).await {
                     Ok(_) => {
                         console_log!("[INFO] Derived price sync succeeded on retry {}", attempt);
@@ -361,7 +361,7 @@ async fn run_price_sync(env: &Env) {
     match infra::price::update_anchor_prices(env).await {
         Ok(_) => {
             console_log!("[INFO] Anchor price sync succeeded");
-            // anchor 价格更新成功后，立即更新 derived 价格
+            // After anchor prices update successfully, refresh derived prices immediately.
             match infra::price::update_derived_prices(env).await {
                 Ok(_) => {
                     console_log!("[INFO] Derived price sync succeeded");

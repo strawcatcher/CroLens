@@ -72,7 +72,7 @@ node "${INTEGRATION_DIR}/mock_rpc_server.js" --port "${RPC_PORT}" --fixtures "${
 RPC_PID="$!"
 
 echo "[integration] Starting wrangler dev..."
-npx wrangler dev "${WRANGLER_CONFIG_ARG[@]}" --local --persist-to "${STATE_DIR}" --port "${PORT}" --ip 127.0.0.1 --log-level warn --show-interactive-dev-session false \
+npx wrangler dev ${WRANGLER_CONFIG_ARG[@]+"${WRANGLER_CONFIG_ARG[@]}"} --local --persist-to "${STATE_DIR}" --port "${PORT}" --ip 127.0.0.1 --log-level warn --show-interactive-dev-session false \
   >"${STATE_DIR}/wrangler.log" 2>&1 &
 WRANGLER_PID="$!"
 
