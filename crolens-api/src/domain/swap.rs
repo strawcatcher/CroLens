@@ -127,20 +127,25 @@ pub async fn construct_swap_tx(services: &infra::Services, args: Value) -> Resul
         "status": status
     }));
 
+    // 尝试模拟验证 (可选 - Tenderly 可能不支持 Cronos)
     let mut simulation_verified = false;
     if steps.len() == 1 {
         if let Some(tenderly) = services.tenderly() {
             let data_hex = types::bytes_to_hex0x(&swap_data);
-            let sim = tenderly
+            match tenderly
                 .simulate(from, swap_to, &data_hex, swap_value, None)
-                .await?;
-            if !sim.success {
-                return Err(CroLensError::SimulationFailed(
-                    sim.error_message
-                        .unwrap_or_else(|| "Tenderly simulation failed".to_string()),
-                ));
+                .await
+            {
+                Ok(sim) => {
+                    if sim.success {
+                        simulation_verified = true;
+                    }
+                    // 模拟失败不阻止返回 - 只是标记 simulation_verified = false
+                }
+                Err(_) => {
+                    // Tenderly 不可用 (例如不支持 Cronos) - 继续但不验证
+                }
             }
-            simulation_verified = true;
         }
     }
 

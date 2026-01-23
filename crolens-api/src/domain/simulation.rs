@@ -56,9 +56,27 @@ pub async fn simulate_transaction(services: &infra::Services, args: Value) -> Re
         }));
     };
 
-    let simulation = simulator
+    let simulation = match simulator
         .simulate(from, to, &input.data, value, input.gas)
-        .await?;
+        .await
+    {
+        Ok(sim) => sim,
+        Err(e) => {
+            // Tenderly 可能不支持 Cronos 网络，返回降级响应
+            if input.simple_mode {
+                return Ok(serde_json::json!({
+                    "text": format!("Simulation unavailable: {}", e),
+                    "meta": services.meta(),
+                }));
+            }
+            return Ok(serde_json::json!({
+                "success": false,
+                "simulation_available": false,
+                "error": e.to_string(),
+                "meta": services.meta(),
+            }));
+        }
+    };
 
     let gas_used = simulation.gas_used.unwrap_or(0);
     let gas_estimated = gas_used.to_string();
@@ -84,7 +102,8 @@ pub async fn simulate_transaction(services: &infra::Services, args: Value) -> Re
                 .as_ref()
                 .map(|c| format!(" | Cost: ~{c} CRO"))
                 .unwrap_or_default();
-            format!("Simulation success | Gas: {gas_estimated}{cost_info}")
+            let mode_info = if simulation.basic_mode { " (basic)" } else { "" };
+            format!("Simulation success{mode_info} | Gas: {gas_estimated}{cost_info}")
         } else {
             format!(
                 "Simulation failed | Reason: {}",
@@ -108,6 +127,7 @@ pub async fn simulate_transaction(services: &infra::Services, args: Value) -> Re
         "state_changes": state_changes,
         "internal_calls": internal_calls_json,
         "risk_assessment": { "level": risk_level, "warnings": warnings },
+        "basic_mode": simulation.basic_mode,
         "meta": services.meta(),
     }))
 }
@@ -521,6 +541,7 @@ mod tests {
             logs: vec![],
             internal_calls: vec![],
             error_message: None,
+            basic_mode: false,
         };
 
         let (level, warnings) = assess_risk(&simulation);
@@ -537,6 +558,7 @@ mod tests {
             logs: vec![],
             internal_calls: vec![],
             error_message: Some("execution reverted".to_string()),
+            basic_mode: false,
         };
 
         let (level, warnings) = assess_risk(&simulation);
@@ -554,6 +576,7 @@ mod tests {
             logs: vec![],
             internal_calls: vec![],
             error_message: None,
+            basic_mode: false,
         };
 
         let (level, warnings) = assess_risk(&simulation);
@@ -579,6 +602,7 @@ mod tests {
             }],
             internal_calls: vec![],
             error_message: None,
+            basic_mode: false,
         };
 
         let (level, warnings) = assess_risk(&simulation);
@@ -604,6 +628,7 @@ mod tests {
             }],
             internal_calls: vec![],
             error_message: None,
+            basic_mode: false,
         };
 
         let (level, warnings) = assess_risk(&simulation);
@@ -629,6 +654,7 @@ mod tests {
                 error: Some("out of gas".to_string()),
             }],
             error_message: None,
+            basic_mode: false,
         };
 
         let (level, warnings) = assess_risk(&simulation);
@@ -910,6 +936,7 @@ mod tests {
                 error: Some("out of gas".to_string()),
             }],
             error_message: None,
+            basic_mode: false,
         };
 
         let (level, warnings) = assess_risk(&simulation);

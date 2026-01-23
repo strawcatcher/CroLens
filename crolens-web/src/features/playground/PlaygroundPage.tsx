@@ -148,6 +148,73 @@ const TOOL_OPTIONS: Array<{
     label: "GET_HEALTH_ALERTS",
     description: "Aggregated wallet health alerts",
   },
+  // Phase 2 - Extended Tools
+  {
+    value: "estimate_gas",
+    label: "ESTIMATE_GAS",
+    description: "Estimate gas cost for tx",
+  },
+  {
+    value: "decode_calldata",
+    label: "DECODE_CALLDATA",
+    description: "Decode calldata to method",
+  },
+  {
+    value: "get_vvs_rewards",
+    label: "GET_VVS_REWARDS",
+    description: "Pending VVS farm rewards",
+  },
+  {
+    value: "get_tectonic_rates",
+    label: "GET_TECTONIC_RATES",
+    description: "Tectonic supply/borrow rates",
+  },
+  {
+    value: "construct_revoke_approval",
+    label: "CONSTRUCT_REVOKE_APPROVAL",
+    description: "Build revoke approval tx",
+  },
+  {
+    value: "get_lending_rates",
+    label: "GET_LENDING_RATES",
+    description: "Cross-protocol lending rates",
+  },
+  // Phase 3 - Advanced Tools
+  {
+    value: "get_liquidation_risk",
+    label: "GET_LIQUIDATION_RISK",
+    description: "Assess liquidation risk",
+  },
+  {
+    value: "get_best_swap_route",
+    label: "GET_BEST_SWAP_ROUTE",
+    description: "Find optimal swap path",
+  },
+  {
+    value: "resolve_cronos_id",
+    label: "RESOLVE_CRONOS_ID",
+    description: ".cro domain lookup",
+  },
+  {
+    value: "get_token_approvals",
+    label: "GET_TOKEN_APPROVALS",
+    description: "List all token approvals",
+  },
+  {
+    value: "get_contract_info",
+    label: "GET_CONTRACT_INFO",
+    description: "Contract type & details",
+  },
+  {
+    value: "get_whale_activity",
+    label: "GET_WHALE_ACTIVITY",
+    description: "Large transfer monitor",
+  },
+  {
+    value: "get_portfolio_analysis",
+    label: "GET_PORTFOLIO_ANALYSIS",
+    description: "Portfolio insights",
+  },
 ];
 
 function isAddress(value: string) {
@@ -246,6 +313,40 @@ export function PlaygroundPage() {
   const approvalTokenInputId = `${baseId}-approval-token`;
   const blockQueryInputId = `${baseId}-block-query`;
 
+  // Phase 2 tool input IDs
+  const calldataInputId = `${baseId}-calldata`;
+  const assetQueryInputId = `${baseId}-asset-query`;
+  const revokeTokenInputId = `${baseId}-revoke-token`;
+  const revokeSpenderInputId = `${baseId}-revoke-spender`;
+
+  // Phase 2 tool states
+  const [calldataInput, setCalldataInput] = React.useState("0x");
+  const [assetQuery, setAssetQuery] = React.useState("");
+  const [revokeToken, setRevokeToken] = React.useState("");
+  const [revokeSpender, setRevokeSpender] = React.useState("");
+
+  // Phase 3 tool input IDs
+  const protocolQueryInputId = `${baseId}-protocol-query`;
+  const cronosIdQueryInputId = `${baseId}-cronos-id-query`;
+  const includeZeroInputId = `${baseId}-include-zero`;
+  const whaleTokenInputId = `${baseId}-whale-token`;
+  const whaleMinValueInputId = `${baseId}-whale-min-value`;
+  const whaleBlocksInputId = `${baseId}-whale-blocks`;
+  const routeTokenInInputId = `${baseId}-route-token-in`;
+  const routeTokenOutInputId = `${baseId}-route-token-out`;
+  const routeAmountInInputId = `${baseId}-route-amount-in`;
+
+  // Phase 3 tool states
+  const [protocolQuery, setProtocolQuery] = React.useState("");
+  const [cronosIdQuery, setCronosIdQuery] = React.useState("");
+  const [includeZero, setIncludeZero] = React.useState(false);
+  const [whaleToken, setWhaleToken] = React.useState("");
+  const [whaleMinValue, setWhaleMinValue] = React.useState("");
+  const [whaleBlocks, setWhaleBlocks] = React.useState("");
+  const [routeTokenIn, setRouteTokenIn] = React.useState("CRO");
+  const [routeTokenOut, setRouteTokenOut] = React.useState("USDC");
+  const [routeAmountIn, setRouteAmountIn] = React.useState("1000000000000000000");
+
   const [showRaw, setShowRaw] = React.useState(false);
   const [, setExecutionLog] = React.useState<string[]>([]);
   const [rawResponse, setRawResponse] =
@@ -269,7 +370,22 @@ export function PlaygroundPage() {
     tool === "get_tectonic_markets" ||
     tool === "get_cro_overview" ||
     tool === "get_protocol_stats" ||
-    tool === "get_health_alerts";
+    tool === "get_health_alerts" ||
+    // Phase 2 tools
+    tool === "estimate_gas" ||
+    tool === "decode_calldata" ||
+    tool === "get_vvs_rewards" ||
+    tool === "get_tectonic_rates" ||
+    tool === "construct_revoke_approval" ||
+    tool === "get_lending_rates" ||
+    // Phase 3 tools
+    tool === "get_liquidation_risk" ||
+    tool === "get_best_swap_route" ||
+    tool === "resolve_cronos_id" ||
+    tool === "get_token_approvals" ||
+    tool === "get_contract_info" ||
+    tool === "get_whale_activity" ||
+    tool === "get_portfolio_analysis";
 
   const needsAddress =
     tool === "get_account_summary" ||
@@ -277,7 +393,15 @@ export function PlaygroundPage() {
     tool === "get_approval_status" ||
     tool === "simulate_transaction" ||
     tool === "construct_swap_tx" ||
-    tool === "get_health_alerts";
+    tool === "get_health_alerts" ||
+    // Phase 2 tools
+    tool === "estimate_gas" ||
+    tool === "get_vvs_rewards" ||
+    // Phase 3 tools
+    tool === "get_liquidation_risk" ||
+    tool === "get_token_approvals" ||
+    tool === "get_contract_info" ||
+    tool === "get_portfolio_analysis";
 
   const toolHelp =
     TOOL_OPTIONS.find((t) => t.value === tool)?.description ?? "";
@@ -305,7 +429,27 @@ export function PlaygroundPage() {
       return false;
     if (tool === "get_token_price" && priceTokens.trim().length === 0)
       return false;
+    // Phase 2 tools validation
+    if (tool === "decode_calldata" && !isHexData(calldataInput))
+      return false;
+    if (tool === "construct_revoke_approval") {
+      if (!isAddress(revokeToken) && revokeToken.trim().length === 0) return false;
+      if (!isAddress(revokeSpender)) return false;
+    }
+    if (tool === "estimate_gas" && !isAddress(simulateTo))
+      return false;
     // get_gas_price, get_approval_status (address checked above), get_block_info need no extra validation
+    // get_tectonic_rates, get_lending_rates, get_vvs_rewards need no extra validation (address checked above)
+    // Phase 3 tools validation
+    if (tool === "resolve_cronos_id" && cronosIdQuery.trim().length === 0)
+      return false;
+    if (tool === "get_best_swap_route") {
+      if (routeTokenIn.trim().length === 0) return false;
+      if (routeTokenOut.trim().length === 0) return false;
+      if (!/^\d+$/.test(routeAmountIn.trim())) return false;
+    }
+    // get_liquidation_risk, get_token_approvals, get_contract_info, get_portfolio_analysis - address checked above
+    // get_whale_activity - all params optional
     return true;
   }, [
     address,
@@ -324,6 +468,15 @@ export function PlaygroundPage() {
     priceTokens,
     approvalToken,
     blockQuery,
+    // Phase 2 tools
+    calldataInput,
+    revokeToken,
+    revokeSpender,
+    // Phase 3 tools
+    cronosIdQuery,
+    routeTokenIn,
+    routeTokenOut,
+    routeAmountIn,
   ]);
 
   async function onPaste() {
@@ -417,6 +570,45 @@ export function PlaygroundPage() {
             return { simple_mode: simpleMode };
           case "get_health_alerts":
             return { address, simple_mode: simpleMode };
+          // Phase 2 tools
+          case "estimate_gas":
+            return {
+              from: address,
+              to: simulateTo,
+              data: simulateData || undefined,
+              value: simulateValue || undefined,
+              simple_mode: simpleMode,
+            };
+          case "decode_calldata":
+            return { data: calldataInput, simple_mode: simpleMode };
+          case "get_vvs_rewards":
+            return { address, simple_mode: simpleMode };
+          case "get_tectonic_rates":
+            return { asset: assetQuery || undefined, simple_mode: simpleMode };
+          case "construct_revoke_approval":
+            return { token: revokeToken, spender: revokeSpender, simple_mode: simpleMode };
+          case "get_lending_rates":
+            return { asset: assetQuery || undefined, simple_mode: simpleMode };
+          // Phase 3 tools
+          case "get_liquidation_risk":
+            return { address, protocol: protocolQuery || undefined, simple_mode: simpleMode };
+          case "get_best_swap_route":
+            return { token_in: routeTokenIn, token_out: routeTokenOut, amount_in: routeAmountIn, simple_mode: simpleMode };
+          case "resolve_cronos_id":
+            return { query: cronosIdQuery, simple_mode: simpleMode };
+          case "get_token_approvals":
+            return { address, include_zero: includeZero, simple_mode: simpleMode };
+          case "get_contract_info":
+            return { address, simple_mode: simpleMode };
+          case "get_whale_activity":
+            return {
+              token: whaleToken || undefined,
+              min_value_usd: whaleMinValue ? Number(whaleMinValue) : undefined,
+              blocks: whaleBlocks ? Number(whaleBlocks) : undefined,
+              simple_mode: simpleMode,
+            };
+          case "get_portfolio_analysis":
+            return { address, simple_mode: simpleMode };
         }
       })();
 
@@ -488,9 +680,9 @@ export function PlaygroundPage() {
       </P5Title>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-        {/* Tools list */}
-        <div className="lg:col-span-3">
-          <P5Card title="TOOLS" className="h-[400px] lg:h-full">
+        {/* Tools list - fixed height with scroll */}
+        <div className="lg:col-span-3 lg:sticky lg:top-4 lg:self-start">
+          <P5Card title="TOOLS" className="h-[400px] lg:h-[600px]">
             <ToolSelector
               value={tool}
               options={TOOL_OPTIONS.map((t) => ({
@@ -838,6 +1030,248 @@ export function PlaygroundPage() {
                 </div>
               ) : null}
 
+              {/* Phase 2 Tools UI */}
+              {tool === "estimate_gas" ? (
+                <div className="space-y-4">
+                  <P5Input
+                    id={simulateToInputId}
+                    label="TO ADDRESS"
+                    value={simulateTo}
+                    onChange={(e) => setSimulateTo(e.target.value)}
+                    placeholder="0x..."
+                    aria-invalid={simulateTo.trim().length > 0 && !isAddress(simulateTo)}
+                    className="mb-0"
+                  />
+                  <div className="mb-4">
+                    <label className="block font-bebas tracking-wider text-[#A3A3A3] mb-1 ml-1 text-lg">
+                      DATA (OPTIONAL)
+                    </label>
+                    <textarea
+                      id={simulateDataInputId}
+                      value={simulateData}
+                      onChange={(e) => setSimulateData(e.target.value)}
+                      rows={2}
+                      placeholder="0x..."
+                      className="w-full bg-[#242424] border-2 border-[#333] focus:border-[#D90018] focus:shadow-[0_0_10px_rgba(217,0,24,0.3)] transition-all rounded-sm text-white font-mono px-4 py-3 outline-none placeholder-[#555]"
+                      spellCheck="false"
+                    />
+                  </div>
+                  <P5Input
+                    id={simulateValueInputId}
+                    label="VALUE (OPTIONAL)"
+                    value={simulateValue}
+                    onChange={(e) => setSimulateValue(e.target.value)}
+                    placeholder="0"
+                    className="mb-0"
+                  />
+                </div>
+              ) : null}
+
+              {tool === "decode_calldata" ? (
+                <div className="space-y-4">
+                  <div className="mb-4">
+                    <label className="block font-bebas tracking-wider text-[#A3A3A3] mb-1 ml-1 text-lg">
+                      CALLDATA
+                    </label>
+                    <textarea
+                      id={calldataInputId}
+                      value={calldataInput}
+                      onChange={(e) => setCalldataInput(e.target.value)}
+                      rows={4}
+                      placeholder="0xa9059cbb..."
+                      className="w-full bg-[#242424] border-2 border-[#333] focus:border-[#D90018] focus:shadow-[0_0_10px_rgba(217,0,24,0.3)] transition-all rounded-sm text-white font-mono px-4 py-3 outline-none placeholder-[#555]"
+                      spellCheck="false"
+                      aria-invalid={calldataInput.trim().length > 0 && !isHexData(calldataInput)}
+                    />
+                    {calldataInput.trim().length > 0 && !isHexData(calldataInput) ? (
+                      <div className="text-xs text-[#FF4444] ml-1 mt-1" role="alert">
+                        Invalid hex data
+                      </div>
+                    ) : null}
+                  </div>
+                  <div className="text-xs text-[#A3A3A3] ml-1">
+                    Paste transaction calldata to decode method signature and parameters.
+                  </div>
+                </div>
+              ) : null}
+
+              {tool === "get_vvs_rewards" ? (
+                <div className="bg-[#1A1A1A] border border-[#333] p-4 text-sm text-[#A3A3A3]">
+                  Enter wallet address above to check pending VVS farm rewards.
+                </div>
+              ) : null}
+
+              {tool === "get_tectonic_rates" || tool === "get_lending_rates" ? (
+                <div className="space-y-4">
+                  <P5Input
+                    id={assetQueryInputId}
+                    label="ASSET (OPTIONAL)"
+                    value={assetQuery}
+                    onChange={(e) => setAssetQuery(e.target.value)}
+                    placeholder="USDC, CRO, or leave empty for all"
+                    className="mb-0"
+                  />
+                  <div className="text-xs text-[#A3A3A3] ml-1">
+                    Filter by asset symbol, or leave empty to see all rates.
+                  </div>
+                </div>
+              ) : null}
+
+              {tool === "construct_revoke_approval" ? (
+                <div className="space-y-4">
+                  <P5Input
+                    id={revokeTokenInputId}
+                    label="TOKEN ADDRESS"
+                    value={revokeToken}
+                    onChange={(e) => setRevokeToken(e.target.value)}
+                    placeholder="0x... (token to revoke)"
+                    aria-invalid={revokeToken.trim().length > 0 && !isAddress(revokeToken)}
+                    className="mb-0"
+                  />
+                  <P5Input
+                    id={revokeSpenderInputId}
+                    label="SPENDER ADDRESS"
+                    value={revokeSpender}
+                    onChange={(e) => setRevokeSpender(e.target.value)}
+                    placeholder="0x... (contract to revoke from)"
+                    aria-invalid={revokeSpender.trim().length > 0 && !isAddress(revokeSpender)}
+                    className="mb-0"
+                  />
+                  <div className="text-xs text-[#A3A3A3] ml-1">
+                    This will construct calldata to set approval to 0 for the specified token and spender.
+                  </div>
+                </div>
+              ) : null}
+
+              {/* Phase 3 Tools UI */}
+              {tool === "get_liquidation_risk" ? (
+                <div className="space-y-4">
+                  <P5Input
+                    id={protocolQueryInputId}
+                    label="PROTOCOL (OPTIONAL)"
+                    value={protocolQuery}
+                    onChange={(e) => setProtocolQuery(e.target.value)}
+                    placeholder="tectonic (or leave empty for all)"
+                    className="mb-0"
+                  />
+                  <div className="text-xs text-[#A3A3A3] ml-1">
+                    Assess liquidation risk for the wallet address. Optionally filter by protocol.
+                  </div>
+                </div>
+              ) : null}
+
+              {tool === "get_best_swap_route" ? (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <P5Input
+                      id={routeTokenInInputId}
+                      label="TOKEN IN"
+                      value={routeTokenIn}
+                      onChange={(e) => setRouteTokenIn(e.target.value)}
+                      placeholder="CRO"
+                      className="mb-0"
+                    />
+                    <P5Input
+                      id={routeTokenOutInputId}
+                      label="TOKEN OUT"
+                      value={routeTokenOut}
+                      onChange={(e) => setRouteTokenOut(e.target.value)}
+                      placeholder="USDC"
+                      className="mb-0"
+                    />
+                  </div>
+                  <P5Input
+                    id={routeAmountInInputId}
+                    label="AMOUNT IN (WEI)"
+                    value={routeAmountIn}
+                    onChange={(e) => setRouteAmountIn(e.target.value)}
+                    placeholder="1000000000000000000"
+                    className="mb-0"
+                  />
+                  <div className="text-xs text-[#A3A3A3] ml-1">
+                    Find the optimal swap route across DEXes.
+                  </div>
+                </div>
+              ) : null}
+
+              {tool === "resolve_cronos_id" ? (
+                <div className="space-y-4">
+                  <P5Input
+                    id={cronosIdQueryInputId}
+                    label="QUERY"
+                    value={cronosIdQuery}
+                    onChange={(e) => setCronosIdQuery(e.target.value)}
+                    placeholder="alice.cro or 0x..."
+                    className="mb-0"
+                  />
+                  <div className="text-xs text-[#A3A3A3] ml-1">
+                    Enter a .cro domain name or an address for reverse lookup.
+                  </div>
+                </div>
+              ) : null}
+
+              {tool === "get_token_approvals" ? (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between py-2">
+                    <label htmlFor={includeZeroInputId} className="font-bebas tracking-wider text-[#A3A3A3] text-lg">
+                      INCLUDE ZERO ALLOWANCES
+                    </label>
+                    <Switch
+                      id={includeZeroInputId}
+                      checked={includeZero}
+                      onCheckedChange={setIncludeZero}
+                    />
+                  </div>
+                  <div className="text-xs text-[#A3A3A3] ml-1">
+                    List all token approvals for the wallet. Toggle to include revoked (zero) approvals.
+                  </div>
+                </div>
+              ) : null}
+
+              {tool === "get_contract_info" ? (
+                <div className="bg-[#1A1A1A] border border-[#333] p-4 text-sm text-[#A3A3A3]">
+                  Enter contract address above to get contract type, code size, and details.
+                </div>
+              ) : null}
+
+              {tool === "get_whale_activity" ? (
+                <div className="space-y-4">
+                  <P5Input
+                    id={whaleTokenInputId}
+                    label="TOKEN (OPTIONAL)"
+                    value={whaleToken}
+                    onChange={(e) => setWhaleToken(e.target.value)}
+                    placeholder="CRO, USDC, or leave empty for all"
+                    className="mb-0"
+                  />
+                  <P5Input
+                    id={whaleMinValueInputId}
+                    label="MIN VALUE USD (OPTIONAL)"
+                    value={whaleMinValue}
+                    onChange={(e) => setWhaleMinValue(e.target.value)}
+                    placeholder="10000"
+                    className="mb-0"
+                  />
+                  <P5Input
+                    id={whaleBlocksInputId}
+                    label="BLOCKS (OPTIONAL)"
+                    value={whaleBlocks}
+                    onChange={(e) => setWhaleBlocks(e.target.value)}
+                    placeholder="100"
+                    className="mb-0"
+                  />
+                  <div className="text-xs text-[#A3A3A3] ml-1">
+                    Monitor large transfers. All parameters are optional.
+                  </div>
+                </div>
+              ) : null}
+
+              {tool === "get_portfolio_analysis" ? (
+                <div className="bg-[#1A1A1A] border border-[#333] p-4 text-sm text-[#A3A3A3]">
+                  Enter wallet address above to get portfolio analysis and diversification insights.
+                </div>
+              ) : null}
+
               {supportsSimpleMode ? (
                 <div className="flex items-center justify-between py-2 border-t border-[#333]">
                   <label htmlFor={simpleModeSwitchId} className="font-bebas tracking-wider text-[#A3A3A3] text-lg">
@@ -947,37 +1381,37 @@ function FormattedResult({
     return <div className="text-sm text-[#A3A3A3]">No results yet.</div>;
   }
 
-  if ("text" in result) {
+  if ("text" in result && typeof (result as { text: unknown }).text === "string") {
     return (
       <div className="space-y-2">
         <div className="font-bebas tracking-wider text-white">SUMMARY</div>
         <div className="bg-black/50 border border-[#333] p-4 text-sm leading-relaxed whitespace-pre-wrap text-[#A3A3A3] font-mono">
-          {result.text}
+          {(result as { text: string }).text}
         </div>
       </div>
     );
   }
 
   if (tool === "get_account_summary" && "wallet" in result) {
-    return <AccountSummaryView value={result} />;
+    return <AccountSummaryView value={result as AccountSummary} />;
   }
   if (tool === "get_defi_positions" && "vvs" in result) {
-    return <DefiPositionsView value={result} />;
+    return <DefiPositionsView value={result as DefiPositions} />;
   }
   if (tool === "get_block_info" && "transactions_count" in result) {
     return <BlockInfoView value={result as BlockInfoResult} />;
   }
   if (tool === "decode_transaction" && "hash" in result && "action" in result) {
-    return <DecodedTxView value={result} />;
+    return <DecodedTxView value={result as DecodedTransaction} />;
   }
   if (tool === "simulate_transaction" && "success" in result) {
-    return <SimulationView value={result} />;
+    return <SimulationView value={result as SimulationResult} />;
   }
   if (tool === "search_contract" && "results" in result) {
-    return <ContractSearchView value={result} />;
+    return <ContractSearchView value={result as ContractSearchResponse} />;
   }
   if (tool === "construct_swap_tx" && "steps" in result) {
-    return <SwapPipelineView value={result} />;
+    return <SwapPipelineView value={result as SwapPipeline} />;
   }
   if (tool === "get_token_info" && "symbol" in result && "decimals" in result) {
     return <TokenInfoView value={result as TokenInfoResult} />;

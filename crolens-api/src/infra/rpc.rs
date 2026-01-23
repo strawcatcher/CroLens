@@ -317,6 +317,91 @@ impl RpcClient {
         types::hex0x_to_bytes(output)
     }
 
+    /// 带 from 地址的 eth_call，用于模拟特定账户的交易
+    pub async fn eth_call_full(
+        &self,
+        from: Address,
+        to: Address,
+        data: &str,
+        value: U256,
+    ) -> Result<String> {
+        let tx_obj = serde_json::json!({
+            "from": from.to_string(),
+            "to": to.to_string(),
+            "data": data,
+            "value": format!("0x{:x}", value),
+        });
+        let result = self.call("eth_call", serde_json::json!([tx_obj, "latest"])).await?;
+        let output = result
+            .as_str()
+            .ok_or_else(|| CroLensError::RpcError("eth_call result is not a string".to_string()))?;
+        Ok(output.to_string())
+    }
+
+    /// 估算 gas 消耗
+    pub async fn eth_estimate_gas(
+        &self,
+        from: Address,
+        to: Address,
+        data: &str,
+        value: U256,
+    ) -> Result<u64> {
+        let tx_obj = serde_json::json!({
+            "from": from.to_string(),
+            "to": to.to_string(),
+            "data": data,
+            "value": format!("0x{:x}", value),
+        });
+        let result = self.call("eth_estimateGas", serde_json::json!([tx_obj])).await?;
+        let hex_str = result
+            .as_str()
+            .ok_or_else(|| CroLensError::RpcError("eth_estimateGas result is not a string".to_string()))?;
+        u64::from_str_radix(hex_str.trim_start_matches("0x"), 16)
+            .map_err(|e| CroLensError::RpcError(format!("Failed to parse gas: {}", e)))
+    }
+
+    /// 基础交易模拟 (使用 eth_call + eth_estimateGas)
+    /// 提供: 成功/失败预测, Gas 估算, 返回值
+    /// 不提供: 事件日志, 内部调用追踪 (需要 debug_traceCall)
+    pub async fn simulate_basic(
+        &self,
+        from: Address,
+        to: Address,
+        data: &str,
+        value: U256,
+    ) -> Result<BasicSimulationResult> {
+        // 并行执行 eth_call 和 eth_estimateGas
+        let call_result = self.eth_call_full(from, to, data, value).await;
+        let gas_result = self.eth_estimate_gas(from, to, data, value).await;
+
+        match (call_result, gas_result) {
+            (Ok(output), Ok(gas_used)) => Ok(BasicSimulationResult {
+                success: true,
+                gas_used: Some(gas_used),
+                output,
+                error_message: None,
+            }),
+            (Err(e), _) => {
+                // eth_call 失败意味着交易会 revert
+                Ok(BasicSimulationResult {
+                    success: false,
+                    gas_used: None,
+                    output: "0x".to_string(),
+                    error_message: Some(e.to_string()),
+                })
+            }
+            (Ok(output), Err(_)) => {
+                // eth_call 成功但 estimateGas 失败（罕见情况）
+                Ok(BasicSimulationResult {
+                    success: true,
+                    gas_used: None,
+                    output,
+                    error_message: None,
+                })
+            }
+        }
+    }
+
     pub async fn eth_get_transaction_by_hash(&self, tx_hash: &str) -> Result<Value> {
         self.call("eth_getTransactionByHash", serde_json::json!([tx_hash]))
             .await
@@ -421,6 +506,15 @@ impl RpcClient {
             error_message,
         })
     }
+}
+
+/// 基础模拟结果 (eth_call + eth_estimateGas)
+#[derive(Debug, Clone)]
+pub struct BasicSimulationResult {
+    pub success: bool,
+    pub gas_used: Option<u64>,
+    pub output: String,
+    pub error_message: Option<String>,
 }
 
 #[derive(Debug, Clone)]

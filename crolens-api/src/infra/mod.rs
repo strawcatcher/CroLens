@@ -47,10 +47,8 @@ impl Services {
         let multicall = rpc
             .as_ref()
             .map(|client| multicall::MulticallClient::new(client.clone(), multicall_address));
-        // SimulationClient 需要 RpcClient，优先使用 debug_traceCall
-        let tenderly = rpc
-            .as_ref()
-            .map(|client| tenderly::SimulationClient::try_new(env, client.clone()));
+        // 模拟客户端: 使用 eth_call + eth_estimateGas (Tenderly 已停止支持 Cronos)
+        let tenderly = rpc.as_ref().map(|client| tenderly::SimulationClient::new(client.clone()));
         Ok(Self {
             trace_id: trace_id.to_string(),
             start_ms,

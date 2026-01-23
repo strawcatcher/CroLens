@@ -35,8 +35,8 @@ export function P5Card({ title, children, className = '', headerAction, jagged =
         </div>
 
         {/* 内容区 - 启用 halftone 背景 */}
-        <div className="px-6 pb-6 flex-1 relative z-10">
-          <div className="bg-[#1A1A1A] p5-halftone-bg rounded-sm p-4 h-full border border-white/5">
+        <div className="px-6 pb-6 flex-1 relative z-10 overflow-hidden min-h-0">
+          <div className="bg-[#1A1A1A] p5-halftone-bg rounded-sm p-4 h-full border border-white/5 overflow-auto">
             {children}
           </div>
         </div>

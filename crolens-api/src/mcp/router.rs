@@ -90,11 +90,13 @@ async fn handle_tools_call(
         let kv = env
             .kv("KV")
             .map_err(|err| CroLensError::KvError(err.to_string()))?;
-        let limit = if record.tier == "pro" { 1000 } else { 50 };
-        let rl_key = format!("rl:tool:{}", record.api_key);
-        let allowed = gateway::ratelimit::check_rate_limit(&kv, &rl_key, limit, 3600).await?;
+        // Rate limit: 300/min for all tiers (generous for testing/demo)
+        let limit = 300u32;
+        let window_secs = 60u64;
+        let rl_key = format!("rl:tool:{}:{}", record.api_key, types::now_ms() / 60000);
+        let allowed = gateway::ratelimit::check_rate_limit(&kv, &rl_key, limit, window_secs).await?;
         if !allowed {
-            return Err(CroLensError::rate_limit_exceeded(Some(3600)));
+            return Err(CroLensError::rate_limit_exceeded(Some(window_secs as u32)));
         }
 
         if record.credits <= 0 {

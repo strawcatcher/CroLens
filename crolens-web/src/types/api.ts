@@ -1,4 +1,5 @@
 export type ToolName =
+  // Phase 1 - Core Tools
   | "get_account_summary"
   | "get_defi_positions"
   | "decode_transaction"
@@ -11,11 +12,26 @@ export type ToolName =
   | "get_token_price"
   | "get_approval_status"
   | "get_block_info"
+  // Phase 2 - Extended Tools
+  | "estimate_gas"
+  | "decode_calldata"
   | "get_vvs_farms"
+  | "get_vvs_rewards"
   | "get_tectonic_markets"
+  | "get_tectonic_rates"
+  | "construct_revoke_approval"
+  | "get_lending_rates"
+  // Phase 3 - Advanced Tools
   | "get_cro_overview"
+  | "get_health_alerts"
   | "get_protocol_stats"
-  | "get_health_alerts";
+  | "get_liquidation_risk"
+  | "get_best_swap_route"
+  | "resolve_cronos_id"
+  | "get_token_approvals"
+  | "get_contract_info"
+  | "get_whale_activity"
+  | "get_portfolio_analysis";
 
 export type JsonRpcId = number | string | null;
 

@@ -32,8 +32,8 @@ export function ToolSelector({ value, options, onValueChange, className }: ToolS
             aria-selected={isActive}
             tabIndex={isActive ? 0 : -1}
             className={cn(
-              "relative group w-full text-left px-4 py-3 transition-all outline-none focus:ring-1 focus:ring-white/50",
-              isActive ? "pl-6" : "hover:pl-5"
+              "relative group w-full text-left px-3 py-2.5 transition-all outline-none focus:ring-1 focus:ring-white/50",
+              isActive ? "pl-4" : "hover:pl-4"
             )}
           >
             {isActive && (
@@ -41,12 +41,12 @@ export function ToolSelector({ value, options, onValueChange, className }: ToolS
             )}
             <div className="relative z-10 flex items-baseline justify-between">
               <span className={cn(
-                "font-mono text-sm md:text-base truncate transition-colors",
+                "font-mono text-xs transition-colors",
                 isActive ? "text-black font-bold" : "text-[#A3A3A3] group-hover:text-white"
               )}>
                 {tool.label}
               </span>
-              {isActive && <ArrowRight size={14} className="text-black ml-2" />}
+              {isActive && <ArrowRight size={12} className="text-black ml-1 flex-shrink-0" />}
             </div>
           </button>
         );
